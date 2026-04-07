@@ -22,7 +22,7 @@ from tkinter import filedialog, messagebox
 
 
 APP_NAME = "Buscador Cliente HeadCargo"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 APP_DIR = Path(__file__).resolve().parent
 APPDATA_DIR = Path(os.environ.get("APPDATA", str(APP_DIR))) / "BuscadorClienteHeadCargo"
 CONFIG_FILE = APPDATA_DIR / "launcher_clientes_onedrive_config.json"
@@ -764,7 +764,7 @@ class SettingsWindow(tk.Toplevel):
         super().__init__(app)
         self.app = app
         self.title(f"{APP_NAME} - Configuracoes")
-        self.geometry("700x650")
+        self.geometry("700x720")
         self.resizable(False, False)
         self.configure(bg=BG_APP)
         self.transient(app)
@@ -780,6 +780,7 @@ class SettingsWindow(tk.Toplevel):
         self.clear_saved_password_requested = False
         self._refresh_password_status()
         self._build_ui()
+        self._fit_to_content()
         self._center()
 
     def _build_ui(self) -> None:
@@ -816,17 +817,188 @@ class SettingsWindow(tk.Toplevel):
         tk.Label(update_card, text="Origem: GitHub / kauanlauer/Buscador-Cliente", font=("Consolas", 9), fg=TEXT_MAIN, bg=BG_RESULTS, justify="left", anchor="w").pack(fill="x")
         tk.Label(update_card, text="O programa verifica novas versoes todo dia e voce tambem pode usar o botao 'Verificar atualizacao' no painel principal.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", wraplength=590).pack(anchor="w", pady=(8, 0))
         buttons = tk.Frame(card, bg=BG_PANEL)
-        buttons.pack(fill="x", side="bottom", pady=(24, 0))
+        buttons.pack(fill="x", pady=(24, 0))
         tk.Button(buttons, text="Salvar", command=self._save, font=("Segoe UI Semibold", 10), relief="flat", bd=0, padx=18, pady=10, fg="#ffffff", bg=ACCENT, activebackground=ACCENT_HOVER, activeforeground="#ffffff").pack(side="left")
         tk.Button(buttons, text="Cancelar", command=self.destroy, font=("Segoe UI", 10), relief="flat", bd=0, padx=18, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
+
+    def _fit_to_content(self) -> None:
+        self.update_idletasks()
+        width = min(max(self.winfo_reqwidth(), 700), max(self.winfo_screenwidth() - 80, 700))
+        height = min(max(self.winfo_reqheight(), 720), max(self.winfo_screenheight() - 80, 560))
+        self.geometry(f"{width}x{height}")
 
     def _center(self) -> None:
         self.update_idletasks()
         width = self.winfo_width()
         height = self.winfo_height()
         x = max((self.winfo_screenwidth() - width) // 2, 0)
-        y = max((self.winfo_screenheight() - height) // 3, 0)
+        y = max((self.winfo_screenheight() - height) // 6, 20)
         self.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _select_path(self) -> None:
+        selected = filedialog.askdirectory(title="Selecione a pasta raiz dos clientes", initialdir=self.path_var.get() or str(self.app.config_store.root_path))
+        if selected:
+            self.path_var.set(selected)
+
+    def _refresh_password_status(self) -> None:
+        if self.clear_saved_password_requested:
+            self.password_status_var.set("A senha salva neste PC sera removida quando voce clicar em Salvar.")
+            return
+        if self.app.config_store.has_saved_password():
+            self.password_status_var.set("Ja existe uma senha salva e criptografada neste PC. Se voce digitar outra senha acima, ela substitui a atual.")
+        else:
+            self.password_status_var.set("Nenhuma senha salva neste PC. Se voce preencher o campo acima, ela sera gravada somente nesta maquina.")
+
+    def _mark_clear_saved_password(self) -> None:
+        self.password_var.set("")
+        self.clear_saved_password_requested = True
+        self._refresh_password_status()
+
+    def _on_password_changed(self) -> None:
+        if self.password_var.get():
+            self.clear_saved_password_requested = False
+            self.password_status_var.set("Uma nova senha sera salva e criptografada neste PC quando voce clicar em Salvar.")
+        elif not self.clear_saved_password_requested:
+            self._refresh_password_status()
+
+    def _save(self) -> None:
+        selected_path = Path(self.path_var.get().strip())
+        if not selected_path.exists():
+            messagebox.showerror("Pasta invalida", "Selecione uma pasta valida.")
+            return
+        self.app.config_store.root_path = selected_path
+        self.app.config_store.preferred_username = self.username_var.get().strip()
+        password_text = self.password_var.get()
+        try:
+            if password_text:
+                self.app.config_store.store_password(password_text)
+            elif self.clear_saved_password_requested:
+                self.app.config_store.clear_saved_password()
+        except Exception as exc:
+            messagebox.showerror("Falha ao salvar senha", str(exc))
+            return
+        self.app.config_store.mark_save_password = self.save_password_var.get()
+        self.app.refresh_config_labels()
+        self.app.refresh_index()
+        self.app.set_status("Configuracoes salvas.")
+        self.destroy()
+
+
+
+class SettingsWindow(tk.Toplevel):
+    def __init__(self, app) -> None:
+        super().__init__(app)
+        self.app = app
+        self.title(f"{APP_NAME} - Configuracoes")
+        self.resizable(False, False)
+        self.configure(bg=BG_APP)
+        self.transient(app)
+        self.grab_set()
+        if getattr(app, "app_icon", None):
+            self.iconphoto(True, app.app_icon)
+        self.path_var = tk.StringVar(value=str(app.config_store.root_path))
+        self.username_var = tk.StringVar(value=app.config_store.preferred_username)
+        self.password_var = tk.StringVar()
+        self.password_var.trace_add("write", lambda *_: self._on_password_changed())
+        self.save_password_var = tk.BooleanVar(value=app.config_store.mark_save_password)
+        self.password_status_var = tk.StringVar()
+        self.clear_saved_password_requested = False
+        self.scroll_canvas = None
+        self.scroll_window = None
+        self._refresh_password_status()
+        self._build_ui()
+        self._fit_to_content()
+        self._center()
+
+    def _build_ui(self) -> None:
+        container = tk.Frame(self, bg=BG_APP)
+        container.pack(fill="both", expand=True)
+
+        content_shell = tk.Frame(container, bg=BG_APP, padx=18, pady=18)
+        content_shell.pack(fill="both", expand=True, pady=(0, 8))
+
+        self.scroll_canvas = tk.Canvas(content_shell, bg=BG_APP, highlightthickness=0, bd=0)
+        scrollbar = tk.Scrollbar(content_shell, orient="vertical", command=self.scroll_canvas.yview)
+        self.scroll_canvas.configure(yscrollcommand=scrollbar.set)
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        scroll_body = tk.Frame(self.scroll_canvas, bg=BG_APP)
+        self.scroll_window = self.scroll_canvas.create_window((0, 0), window=scroll_body, anchor="nw")
+        scroll_body.bind("<Configure>", self._update_scroll_region)
+        self.scroll_canvas.bind("<Configure>", self._sync_scroll_width)
+        self.bind("<MouseWheel>", self._on_mousewheel)
+
+        card = tk.Frame(scroll_body, bg=BG_PANEL, padx=18, pady=18, highlightbackground=BORDER, highlightthickness=1)
+        card.pack(fill="both", expand=True)
+
+        title_row = tk.Frame(card, bg=BG_PANEL)
+        title_row.pack(fill="x")
+        if getattr(self.app, "header_logo_small", None):
+            tk.Label(title_row, image=self.app.header_logo_small, bg=BG_PANEL).pack(side="left", padx=(0, 12))
+        text_col = tk.Frame(title_row, bg=BG_PANEL)
+        text_col.pack(side="left", fill="x", expand=True)
+        tk.Label(text_col, text="Configuracoes do buscador", font=("Segoe UI Semibold", 15), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Label(text_col, text="Defina a pasta dos clientes e o usuario padrao da tela do HeadCargo.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(6, 14))
+
+        tk.Label(card, text="Pasta dos clientes", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        row = tk.Frame(card, bg=BG_PANEL)
+        row.pack(fill="x", pady=(6, 12))
+        tk.Entry(row, textvariable=self.path_var, font=("Consolas", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(side="left", fill="x", expand=True, ipady=8)
+        tk.Button(row, text="Selecionar", command=self._select_path, font=("Segoe UI", 9), relief="flat", bd=0, padx=14, pady=8, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
+
+        tk.Label(card, text="Usuario padrao do HeadCargo", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Entry(card, textvariable=self.username_var, font=("Segoe UI", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(fill="x", pady=(6, 12), ipady=8)
+
+        tk.Label(card, text="Senha padrao do HeadCargo", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Entry(card, textvariable=self.password_var, show="*", font=("Segoe UI", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(fill="x", pady=(6, 8), ipady=8)
+        tk.Label(card, textvariable=self.password_status_var, font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w", wraplength=610).pack(fill="x")
+
+        password_actions = tk.Frame(card, bg=BG_PANEL)
+        password_actions.pack(fill="x", pady=(10, 0))
+        tk.Button(password_actions, text="Limpar senha salva neste PC", command=self._mark_clear_saved_password, font=("Segoe UI", 9), relief="flat", bd=0, padx=14, pady=8, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left")
+
+        tk.Checkbutton(card, text="Marcar 'Salvar senha' do HeadCargo automaticamente", variable=self.save_password_var, font=("Segoe UI", 10), fg=TEXT_MAIN, bg=BG_PANEL, activebackground=BG_PANEL, activeforeground=TEXT_MAIN, selectcolor=BG_PANEL).pack(anchor="w", pady=(12, 0))
+        tk.Label(card, text="A senha digitada aqui fica criptografada somente neste computador. O OneDrive do cliente nao recebe essa senha.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", wraplength=610).pack(anchor="w", pady=(8, 0))
+
+        tk.Label(card, text="Atualizacoes automaticas", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w", pady=(16, 0))
+        update_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        update_card.pack(fill="x", pady=(6, 0))
+        tk.Label(update_card, text="Origem: GitHub / kauanlauer/Buscador-Cliente", font=("Consolas", 9), fg=TEXT_MAIN, bg=BG_RESULTS, justify="left", anchor="w").pack(fill="x")
+        tk.Label(update_card, text="O programa verifica novas versoes todo dia e voce tambem pode usar o botao 'Verificar atualizacao' no painel principal.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", wraplength=590).pack(anchor="w", pady=(8, 0))
+
+        footer = tk.Frame(container, bg=BG_APP, padx=18, pady=18)
+        footer.pack(fill="x", side="bottom")
+        footer_card = tk.Frame(footer, bg=BG_PANEL, padx=18, pady=14, highlightbackground=BORDER, highlightthickness=1)
+        footer_card.pack(fill="x")
+        tk.Button(footer_card, text="Salvar", command=self._save, font=("Segoe UI Semibold", 10), relief="flat", bd=0, padx=18, pady=10, fg="#ffffff", bg=ACCENT, activebackground=ACCENT_HOVER, activeforeground="#ffffff").pack(side="left")
+        tk.Button(footer_card, text="Cancelar", command=self.destroy, font=("Segoe UI", 10), relief="flat", bd=0, padx=18, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
+
+    def _fit_to_content(self) -> None:
+        self.update_idletasks()
+        width = min(max(self.winfo_reqwidth(), 700), max(self.winfo_screenwidth() - 80, 700))
+        height = min(max(self.winfo_reqheight(), 620), max(self.winfo_screenheight() - 80, 560))
+        self.geometry(f"{width}x{height}")
+
+    def _center(self) -> None:
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = max((self.winfo_screenwidth() - width) // 2, 0)
+        y = max((self.winfo_screenheight() - height) // 6, 20)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _update_scroll_region(self, _event=None) -> None:
+        if self.scroll_canvas:
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+
+    def _sync_scroll_width(self, event) -> None:
+        if self.scroll_canvas is not None and self.scroll_window is not None:
+            self.scroll_canvas.itemconfigure(self.scroll_window, width=event.width)
+
+    def _on_mousewheel(self, event) -> None:
+        if self.scroll_canvas:
+            self.scroll_canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def _select_path(self) -> None:
         selected = filedialog.askdirectory(title="Selecione a pasta raiz dos clientes", initialdir=self.path_var.get() or str(self.app.config_store.root_path))

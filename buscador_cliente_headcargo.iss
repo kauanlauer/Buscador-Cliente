@@ -1,5 +1,5 @@
 #define MyAppName "Buscador Cliente HeadCargo"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "HeadCargo"
 #define MyAppExeName "Buscador Cliente HeadCargo.exe"
 #define MyAppSourceExe "dist\Buscador Cliente HeadCargo.exe"

@@ -7,7 +7,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_instalador_buscador.
 
 2. Atualize o manifesto do repositorio:
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.0 -Notes "Descricao curta da versao."
+powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.1 -Notes "Descricao curta da versao."
 ```
 
 3. Monte a pasta `Github` com os arquivos do repositorio:
