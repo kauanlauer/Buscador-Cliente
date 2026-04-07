@@ -1,0 +1,5 @@
+﻿{
+    "version":  "1.2.0",
+    "installer_url":  "https://github.com/kauanlauer/Buscador-Cliente/releases/latest/download/Setup%20Buscador%20Cliente%20HeadCargo.exe",
+    "notes":  "Senha local criptografada neste PC, copia local segura do cliente, icone profissional e inicializacao com o Windows."
+}
