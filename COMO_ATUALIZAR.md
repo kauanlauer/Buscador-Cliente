@@ -7,7 +7,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_instalador_buscador.
 
 2. Atualize o manifesto do repositorio:
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.1 -Notes "Descricao curta da versao."
+powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.2 -Notes "Descricao curta da versao."
 ```
 
 3. Monte a pasta `Github` com os arquivos do repositorio:
@@ -29,7 +29,7 @@ O nome do anexo no Release deve ser:
 - O usuario tambem pode clicar em `Verificar atualizacao`.
 - Quando existe versao nova, o app pergunta se deseja atualizar.
 - Se confirmar, ele baixa o `Setup` direto do GitHub e instala em silencio.
-- A configuracao atual, a senha local criptografada e a pasta dos clientes sao preservadas no update.
+- A configuracao atual e a pasta dos clientes sao preservadas no update.
 
 **O que e Release**
 

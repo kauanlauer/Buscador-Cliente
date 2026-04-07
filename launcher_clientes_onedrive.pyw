@@ -22,7 +22,7 @@ from tkinter import filedialog, messagebox
 
 
 APP_NAME = "Buscador Cliente HeadCargo"
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 APP_DIR = Path(__file__).resolve().parent
 APPDATA_DIR = Path(os.environ.get("APPDATA", str(APP_DIR))) / "BuscadorClienteHeadCargo"
 CONFIG_FILE = APPDATA_DIR / "launcher_clientes_onedrive_config.json"
@@ -429,7 +429,7 @@ class ConfigStore:
         self.save()
 
     def login_preferences(self) -> LoginPreferences:
-        return LoginPreferences(self.preferred_username, self.mark_save_password, self.saved_password)
+        return LoginPreferences(self.preferred_username, False, "")
 
     @property
     def encrypted_password(self) -> str:
@@ -529,7 +529,7 @@ class HeadCargoLoginAutomator:
         self.app = app
 
     def apply_async(self, process_id: int, preferences: LoginPreferences) -> None:
-        if not (preferences.username or preferences.password or preferences.mark_save_password):
+        if not preferences.username:
             return
         threading.Thread(target=self._apply_worker, args=(process_id, preferences), daemon=True).start()
 
@@ -544,22 +544,11 @@ class HeadCargoLoginAutomator:
         children = self._enumerate_children(hwnd)
         username_control = self._find_username_control(children)
         password_hwnd = self._find_password_control(children)
-        checkbox_hwnd = self._find_save_checkbox(children)
         if username_control:
             self._apply_username(username_control, preferences.username)
-        if password_hwnd and preferences.password:
-            self._apply_password(password_hwnd, preferences.password)
-        if checkbox_hwnd:
-            self._set_checkbox_state(checkbox_hwnd, preferences.mark_save_password)
         if password_hwnd:
             user32.SetFocus(password_hwnd)
-        summary = "Login preparado no cliente."
-        if preferences.username and preferences.password:
-            summary = f"Usuario '{preferences.username}' e senha local preparados no login."
-        elif preferences.username:
-            summary = f"Usuario '{preferences.username}' preparado no login."
-        elif preferences.password:
-            summary = "Senha local preparada no login."
+        summary = f"Usuario '{preferences.username}' preparado no login."
         self.app.after(0, lambda: self.app.set_status(summary))
 
     def _wait_for_window(self, process_id: int) -> int | None:
@@ -898,14 +887,8 @@ class SettingsWindow(tk.Toplevel):
             self.iconphoto(True, app.app_icon)
         self.path_var = tk.StringVar(value=str(app.config_store.root_path))
         self.username_var = tk.StringVar(value=app.config_store.preferred_username)
-        self.password_var = tk.StringVar()
-        self.password_var.trace_add("write", lambda *_: self._on_password_changed())
-        self.save_password_var = tk.BooleanVar(value=app.config_store.mark_save_password)
-        self.password_status_var = tk.StringVar()
-        self.clear_saved_password_requested = False
         self.scroll_canvas = None
         self.scroll_window = None
-        self._refresh_password_status()
         self._build_ui()
         self._fit_to_content()
         self._center()
@@ -949,17 +932,11 @@ class SettingsWindow(tk.Toplevel):
 
         tk.Label(card, text="Usuario padrao do HeadCargo", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
         tk.Entry(card, textvariable=self.username_var, font=("Segoe UI", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(fill="x", pady=(6, 12), ipady=8)
-
-        tk.Label(card, text="Senha padrao do HeadCargo", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Entry(card, textvariable=self.password_var, show="*", font=("Segoe UI", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(fill="x", pady=(6, 8), ipady=8)
-        tk.Label(card, textvariable=self.password_status_var, font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w", wraplength=610).pack(fill="x")
-
-        password_actions = tk.Frame(card, bg=BG_PANEL)
-        password_actions.pack(fill="x", pady=(10, 0))
-        tk.Button(password_actions, text="Limpar senha salva neste PC", command=self._mark_clear_saved_password, font=("Segoe UI", 9), relief="flat", bd=0, padx=14, pady=8, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left")
-
-        tk.Checkbutton(card, text="Marcar 'Salvar senha' do HeadCargo automaticamente", variable=self.save_password_var, font=("Segoe UI", 10), fg=TEXT_MAIN, bg=BG_PANEL, activebackground=BG_PANEL, activeforeground=TEXT_MAIN, selectcolor=BG_PANEL).pack(anchor="w", pady=(12, 0))
-        tk.Label(card, text="A senha digitada aqui fica criptografada somente neste computador. O OneDrive do cliente nao recebe essa senha.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", wraplength=610).pack(anchor="w", pady=(8, 0))
+        tk.Label(card, text="Comportamento do login", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        login_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        login_card.pack(fill="x", pady=(6, 0))
+        tk.Label(login_card, text="O buscador preenche apenas o usuario do HeadCargo e deixa o foco na senha.", font=("Segoe UI", 9), fg=TEXT_MAIN, bg=BG_RESULTS, justify="left", anchor="w", wraplength=590).pack(fill="x")
+        tk.Label(login_card, text="A senha deve ser digitada manualmente na tela do cliente. Nenhuma senha fica salva pelo buscador.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", anchor="w", wraplength=590).pack(fill="x", pady=(8, 0))
 
         tk.Label(card, text="Atualizacoes automaticas", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w", pady=(16, 0))
         update_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
@@ -1005,27 +982,6 @@ class SettingsWindow(tk.Toplevel):
         if selected:
             self.path_var.set(selected)
 
-    def _refresh_password_status(self) -> None:
-        if self.clear_saved_password_requested:
-            self.password_status_var.set("A senha salva neste PC sera removida quando voce clicar em Salvar.")
-            return
-        if self.app.config_store.has_saved_password():
-            self.password_status_var.set("Ja existe uma senha salva e criptografada neste PC. Se voce digitar outra senha acima, ela substitui a atual.")
-        else:
-            self.password_status_var.set("Nenhuma senha salva neste PC. Se voce preencher o campo acima, ela sera gravada somente nesta maquina.")
-
-    def _mark_clear_saved_password(self) -> None:
-        self.password_var.set("")
-        self.clear_saved_password_requested = True
-        self._refresh_password_status()
-
-    def _on_password_changed(self) -> None:
-        if self.password_var.get():
-            self.clear_saved_password_requested = False
-            self.password_status_var.set("Uma nova senha sera salva e criptografada neste PC quando voce clicar em Salvar.")
-        elif not self.clear_saved_password_requested:
-            self._refresh_password_status()
-
     def _save(self) -> None:
         selected_path = Path(self.path_var.get().strip())
         if not selected_path.exists():
@@ -1033,16 +989,8 @@ class SettingsWindow(tk.Toplevel):
             return
         self.app.config_store.root_path = selected_path
         self.app.config_store.preferred_username = self.username_var.get().strip()
-        password_text = self.password_var.get()
-        try:
-            if password_text:
-                self.app.config_store.store_password(password_text)
-            elif self.clear_saved_password_requested:
-                self.app.config_store.clear_saved_password()
-        except Exception as exc:
-            messagebox.showerror("Falha ao salvar senha", str(exc))
-            return
-        self.app.config_store.mark_save_password = self.save_password_var.get()
+        self.app.config_store.mark_save_password = False
+        self.app.config_store.clear_saved_password()
         self.app.refresh_config_labels()
         self.app.refresh_index()
         self.app.set_status("Configuracoes salvas.")
@@ -1230,12 +1178,13 @@ class LauncherApp(tk.Tk):
         self._build_ui()
         self.refresh_config_labels()
         self.palette = SearchPalette(self)
+        self.withdraw()
         self.after(100, self._start_hotkey_listener)
         self.after(160, self._start_tray_icon)
         self.after(250, self.refresh_index)
         self.after(3500, self.check_for_daily_updates)
-        if "--minimized" in sys.argv:
-            self.after(1200, self.minimize_to_taskbar)
+        if "--show-panel" in sys.argv:
+            self.after(600, self.show_panel)
 
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self)
@@ -1290,7 +1239,7 @@ class LauncherApp(tk.Tk):
         title_block = tk.Frame(branding, bg=BG_PANEL)
         title_block.pack(side="left", fill="x", expand=True)
         tk.Label(title_block, text=APP_NAME, font=("Segoe UI Semibold", 17), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(title_block, text="Busca rapida do Desktop.exe e prepara a tela de login do HeadCargo.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(4, 0))
+        tk.Label(title_block, text="Busca rapida do Desktop.exe e preenche o usuario no login do HeadCargo.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(4, 0))
         chips = tk.Frame(header, bg=BG_PANEL)
         chips.pack(fill="x", pady=(14, 0))
         tk.Label(chips, textvariable=self.hotkey_var, font=("Segoe UI Semibold", 9), fg=ACCENT, bg="#e0edff", padx=10, pady=5).pack(side="left")
@@ -1315,17 +1264,14 @@ class LauncherApp(tk.Tk):
         hint_card = tk.Frame(container, bg=BG_PANEL, padx=20, pady=16, highlightbackground=BORDER, highlightthickness=1)
         hint_card.pack(fill="both", expand=True, pady=(14, 0))
         tk.Label(hint_card, text="Como usar", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(hint_card, text="1. Deixe o buscador aberto.\n2. Use Alt+Espaco.\n3. Digite o cliente e pressione Enter.\n4. O programa abre uma copia local do cliente, preenche o usuario e pode preencher a senha deste PC.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x", pady=(8, 8))
+        tk.Label(hint_card, text="1. Deixe o buscador na bandeja do sistema.\n2. Use Alt+Espaco.\n3. Digite o cliente e pressione Enter.\n4. O programa abre o cliente original, preenche o usuario e deixa o foco na senha.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x", pady=(8, 8))
         tk.Label(hint_card, textvariable=self.status_var, font=("Segoe UI", 9), fg=TEXT_SOFT, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x")
 
     def refresh_config_labels(self) -> None:
         self.folder_var.set(str(self.config_store.root_path))
         self.user_var.set(self.config_store.preferred_username or "Nao definido")
-        if self.config_store.mark_save_password:
-            self.save_password_text.set("Salvar senha do HeadCargo: marcar automaticamente na copia local do cliente.")
-        else:
-            self.save_password_text.set("Salvar senha do HeadCargo: nao marcar automaticamente.")
-        self.local_password_text.set("Senha local neste PC: salva e criptografada." if self.config_store.has_saved_password() else "Senha local neste PC: nao salva.")
+        self.save_password_text.set("Login do HeadCargo: preenchimento automatico apenas do usuario.")
+        self.local_password_text.set("Senha: digitacao manual no cliente. Nenhuma senha fica salva pelo buscador.")
         self.update_source_var.set("GitHub: kauanlauer/Buscador-Cliente")
 
     def get_native_icon_handle(self, size: int = 32) -> int | None:
@@ -1341,12 +1287,13 @@ class LauncherApp(tk.Tk):
         self.focus_force()
 
     def minimize_to_taskbar(self) -> None:
-        self.iconify()
+        self.withdraw()
 
     def show_palette(self) -> None:
         self.palette.show_palette()
 
     def open_settings(self) -> None:
+        self.show_panel()
         if self.settings_window and self.settings_window.winfo_exists():
             self.settings_window.lift()
             self.settings_window.focus_force()
@@ -1693,12 +1640,11 @@ class LauncherApp(tk.Tk):
             messagebox.showerror("Arquivo nao encontrado", f"Nao achei o arquivo:\n{entry.exe_path}")
             return
         try:
-            local_folder, local_exe = self.prepare_client_workspace(entry)
-            process = subprocess.Popen([str(local_exe)], cwd=str(local_folder))
+            process = subprocess.Popen([str(entry.exe_path)], cwd=str(entry.folder_path))
         except (OSError, FileNotFoundError) as exc:
             messagebox.showerror("Erro ao executar", str(exc))
             return
-        self.set_status(f"Abrindo copia local segura de: {entry.display_name}")
+        self.set_status(f"Abrindo cliente: {entry.display_name}")
         self.palette.hide_palette()
         self.login_automator.apply_async(process.pid, self.config_store.login_preferences())
 
