@@ -4,8 +4,4 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-Github/Repositorio/*
-Github/Release/*
-!Github/README.md
-!Github/preparar_publicacao.ps1
+Github/*

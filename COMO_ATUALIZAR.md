@@ -10,14 +10,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_instalador_buscador.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.0 -Notes "Descricao curta da versao."
 ```
 
-3. Organize a pasta de publicacao:
+3. Monte a pasta `Github` com os arquivos do repositorio:
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Github\preparar_publicacao.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\preparar_pasta_github.ps1
 ```
 
-4. Envie para o GitHub:
-- `github_update_manifest.json`
-- commit e push no repositorio
+4. Envie para o GitHub somente o que estiver dentro da pasta `Github`.
 
 5. Crie ou atualize o GitHub Release e anexe exatamente este arquivo:
 - `dist\Setup Buscador Cliente HeadCargo.exe`
@@ -32,6 +30,11 @@ O nome do anexo no Release deve ser:
 - Quando existe versao nova, o app pergunta se deseja atualizar.
 - Se confirmar, ele baixa o `Setup` direto do GitHub e instala em silencio.
 - A configuracao atual, a senha local criptografada e a pasta dos clientes sao preservadas no update.
+
+**O que e Release**
+
+- `Repositorio`: onde ficam os arquivos de codigo.
+- `Release`: area do GitHub para anexar o instalador `.exe` que o programa baixa sozinho nas atualizacoes.
 
 **Observacoes**
 
