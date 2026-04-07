@@ -1,29 +1,37 @@
-**Fluxo**
+**Fluxo GitHub**
 
-1. Gere a nova versão:
+1. Gere a nova versao:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_instalador_buscador.ps1
 ```
 
-2. Publique a atualização em uma pasta compartilhada, OneDrive ou rede:
+2. Atualize o manifesto do repositorio:
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.0.2 -Destino "D:\PastaCompartilhada\Buscador"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.1.0 -Notes "Descricao curta da versao."
 ```
 
-3. Isso vai criar dois arquivos na pasta de destino:
-- `Buscador Cliente HeadCargo.exe`
-- `manifesto_buscador_cliente_headcargo.json`
+3. Envie para o GitHub:
+- `github_update_manifest.json`
+- commit e push no repositorio
 
-4. Em cada máquina do usuário, configure uma vez o caminho do manifesto em:
-- `Configuracoes`
-- `Manifesto de atualizacao (.json)`
+4. Crie ou atualize o GitHub Release e anexe exatamente este arquivo:
+- `dist\Setup Buscador Cliente HeadCargo.exe`
 
-5. Depois disso, o usuário atualiza pelo próprio programa:
-- botão `Atualizar`
-- ou menu `Buscador > Verificar atualizacao`
+O nome do anexo no Release deve ser:
+- `Setup Buscador Cliente HeadCargo.exe`
+
+**Como o app atualiza**
+
+- O programa verifica atualizacao automaticamente 1 vez por dia.
+- O usuario tambem pode clicar em `Verificar atualizacao`.
+- Quando existe versao nova, o app pergunta se deseja atualizar.
+- Se confirmar, ele baixa o `Setup` direto do GitHub e instala em silencio.
+- A configuracao atual do usuario e da pasta dos clientes e preservada no update.
 
 **Observacoes**
 
-- O manifesto pode ficar em uma pasta do OneDrive da empresa.
-- Sempre que você publicar uma versão nova com número maior, os usuários conseguem atualizar sem reinstalar.
-- O instalador completo continua disponível quando você quiser instalar do zero em outra máquina.
+- O app busca o manifesto em:
+  `https://raw.githubusercontent.com/kauanlauer/Buscador-Cliente/main/github_update_manifest.json`
+- O instalador e baixado de:
+  `https://github.com/kauanlauer/Buscador-Cliente/releases/latest/download/Setup%20Buscador%20Cliente%20HeadCargo.exe`
+- Se o Release estiver sem esse arquivo, o update nao vai conseguir baixar.
