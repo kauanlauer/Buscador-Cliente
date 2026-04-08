@@ -22,7 +22,7 @@ from tkinter import filedialog, messagebox
 
 
 APP_NAME = "Buscador Cliente HeadCargo"
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 APP_DIR = Path(__file__).resolve().parent
 APPDATA_DIR = Path(os.environ.get("APPDATA", str(APP_DIR))) / "BuscadorClienteHeadCargo"
 CONFIG_FILE = APPDATA_DIR / "launcher_clientes_onedrive_config.json"
@@ -30,7 +30,7 @@ UPDATES_DIR = APPDATA_DIR / "updates"
 CLIENT_CACHE_DIR = APPDATA_DIR / "clientes_cache"
 LOGO_FILE = "logo_buscador.png"
 ICON_FILE = "logo_buscador.ico"
-DEFAULT_ROOT_PATH = r"D:\OneDrive - headsoft.com.br\HeadSoft Home - Suporte\Pastinha Clientes\Acessos Clientes"
+DEFAULT_ROOT_PATH = ""
 DESKTOP_EXE_NAME = "Desktop.exe"
 SERVER_DCN_NAME = "server.dcn"
 SETUP_EXE_NAME = "Setup Buscador Cliente HeadCargo.exe"
@@ -43,7 +43,7 @@ MOD_ALT = 0x0001
 VK_SPACE = 0x20
 WM_HOTKEY = 0x0312
 WM_QUIT = 0x0012
-MAX_VISIBLE_RESULTS = 8
+MAX_VISIBLE_RESULTS = 5
 MUTEX_NAME = "HeadCargoClientSearcherSingleton"
 APP_USER_MODEL_ID = "HeadCargo.BuscadorClienteHeadCargo"
 
@@ -61,6 +61,8 @@ NIM_DELETE = 0x00000002
 NIF_MESSAGE = 0x00000001
 NIF_ICON = 0x00000002
 NIF_TIP = 0x00000004
+NIF_INFO = 0x00000010
+NIIF_INFO = 0x00000001
 IDI_APPLICATION = 32512
 TPM_LEFTALIGN = 0x0000
 TPM_BOTTOMALIGN = 0x0020
@@ -90,17 +92,31 @@ CB_SETCURSEL = 0x014E
 CB_FINDSTRINGEXACT = 0x0158
 CB_SELECTSTRING = 0x014D
 
-BG_APP = "#f5f7fb"
-BG_PANEL = "#ffffff"
-BG_INPUT = "#eef2ff"
-BG_RESULTS = "#f8fafc"
-TEXT_MAIN = "#0f172a"
-TEXT_MUTED = "#64748b"
-TEXT_SOFT = "#94a3b8"
-ACCENT = "#2563eb"
-ACCENT_HOVER = "#1d4ed8"
-BORDER = "#dbe4f0"
-SUCCESS = "#0f766e"
+BG_APP = "#eef3ef"
+BG_PANEL = "#fbfcfa"
+BG_PANEL_ALT = "#f4f8f5"
+BG_INPUT = "#edf3ef"
+BG_RESULTS = "#f6f8f7"
+TEXT_MAIN = "#16342b"
+TEXT_MUTED = "#5f7069"
+TEXT_SOFT = "#7c8d86"
+ACCENT = "#1f7a45"
+ACCENT_HOVER = "#176338"
+ACCENT_ALT = "#24579a"
+ACCENT_ALT_HOVER = "#1d467d"
+ACCENT_ALT_SOFT = "#e4eefb"
+ALERT = "#ca4a3c"
+ALERT_SOFT = "#f8e5e1"
+BORDER = "#d5dfd8"
+SUCCESS = "#24579a"
+BTN_SECONDARY_BG = "#ffffff"
+BTN_SECONDARY_HOVER = "#eef3f8"
+BTN_TERTIARY_BG = "#e8f0ea"
+BTN_TERTIARY_HOVER = "#d8e6dc"
+BADGE_GREEN_BG = "#dceedd"
+BADGE_BLUE_BG = "#e4eefb"
+BADGE_RED_BG = "#f8e5e1"
+SEARCH_TRANSPARENT = "#01fe7a"
 
 CHANGELOG_ENTRIES = [
     {
@@ -108,8 +124,12 @@ CHANGELOG_ENTRIES = [
         "title": "Ajustes locais em validacao",
         "status": "Nao publicado",
         "items": [
+            "Compatibilidade corrigida para Python 3.12 nos tipos Win32 usados pela bandeja.",
             "Correcao do fluxo de abertura para executar a copia local do cliente em vez do Desktop.exe original do OneDrive.",
             "Garantia de que o usuario padrao configurado fique em primeiro lugar no [Users] / List= do server.dcn local do usuario.",
+            "Correcao do ajuste do usuario para atualizar o server.dcn realmente usado pelo Desktop.exe local, inclusive em subpastas.",
+            "Pre-cache silencioso dos Desktop.exe de todos os clientes no computador local para reduzir atraso e dependencia do OneDrive na abertura.",
+            "Abertura do cliente movida para segundo plano, fechando a barra de busca imediatamente e avisando pela bandeja enquanto o OneDrive termina o download.",
             "Correcao da busca por Alt+Espaco para funcionar com o app apenas em segundo plano, sem precisar abrir o painel primeiro.",
             "Remocao dos waits bloqueantes na inicializacao do hotkey e do tray, reduzindo travamentos na subida junto com o Windows.",
             "Inclusao de um modal interno de historico para registrar os ajustes feitos no buscador sem depender de publicacao no GitHub.",
@@ -154,6 +174,24 @@ class POINT(ctypes.Structure):
     _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
 
 
+class RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", wintypes.LONG),
+        ("top", wintypes.LONG),
+        ("right", wintypes.LONG),
+        ("bottom", wintypes.LONG),
+    ]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("rcMonitor", RECT),
+        ("rcWork", RECT),
+        ("dwFlags", wintypes.DWORD),
+    ]
+
+
 class NOTIFYICONDATAW(ctypes.Structure):
     _fields_ = [
         ("cbSize", wintypes.DWORD),
@@ -185,6 +223,12 @@ crypt32.CryptProtectData.argtypes = [ctypes.POINTER(DATA_BLOB), wintypes.LPCWSTR
 crypt32.CryptProtectData.restype = wintypes.BOOL
 crypt32.CryptUnprotectData.argtypes = [ctypes.POINTER(DATA_BLOB), ctypes.POINTER(wintypes.LPWSTR), ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(DATA_BLOB)]
 crypt32.CryptUnprotectData.restype = wintypes.BOOL
+user32.GetCursorPos.argtypes = [ctypes.POINTER(POINT)]
+user32.GetCursorPos.restype = wintypes.BOOL
+user32.MonitorFromPoint.argtypes = [POINT, wintypes.DWORD]
+user32.MonitorFromPoint.restype = wintypes.HANDLE
+user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
+user32.GetMonitorInfoW.restype = wintypes.BOOL
 
 
 def normalize_text(value: str) -> str:
@@ -237,6 +281,26 @@ def version_tuple(version_text: str) -> tuple[int, ...]:
 
 def today_iso() -> str:
     return date.today().isoformat()
+
+
+def get_active_monitor_work_area() -> tuple[int, int, int, int]:
+    point = POINT()
+    if user32.GetCursorPos(ctypes.byref(point)):
+        monitor = user32.MonitorFromPoint(point, 2)
+        if monitor:
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            if user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+                rect = info.rcWork
+                return rect.left, rect.top, rect.right, rect.bottom
+    return 0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+
+
+def center_geometry_on_active_monitor(width: int, height: int) -> tuple[int, int]:
+    left, top, right, bottom = get_active_monitor_work_area()
+    x = left + ((right - left) - width) // 2
+    y = top + ((bottom - top) - height) // 2
+    return x, y
 
 
 def download_text(url: str) -> str:
@@ -307,6 +371,115 @@ def format_changelog_entry(entry: dict[str, object]) -> str:
     for item in entry.get("items", []):
         lines.append(f"- {item}")
     return "\n".join(lines).strip()
+
+
+def create_button(parent, text: str, command, *, variant: str = "secondary", padx: int = 16, pady: int = 10):
+    styles = {
+        "primary": {
+            "fg": "#ffffff",
+            "bg": ACCENT,
+            "activebackground": ACCENT_HOVER,
+            "activeforeground": "#ffffff",
+            "font": ("Segoe UI Semibold", 10),
+        },
+        "accent_alt": {
+            "fg": "#ffffff",
+            "bg": ACCENT_ALT,
+            "activebackground": ACCENT_ALT_HOVER,
+            "activeforeground": "#ffffff",
+            "font": ("Segoe UI Semibold", 10),
+        },
+        "secondary": {
+            "fg": TEXT_MAIN,
+            "bg": BTN_SECONDARY_BG,
+            "activebackground": BTN_SECONDARY_HOVER,
+            "activeforeground": TEXT_MAIN,
+            "font": ("Segoe UI", 10),
+        },
+        "tertiary": {
+            "fg": TEXT_MAIN,
+            "bg": BTN_TERTIARY_BG,
+            "activebackground": BTN_TERTIARY_HOVER,
+            "activeforeground": TEXT_MAIN,
+            "font": ("Segoe UI", 10),
+        },
+    }
+    style = styles[variant]
+    return tk.Button(
+        parent,
+        text=text,
+        command=command,
+        font=style["font"],
+        relief="flat",
+        bd=0,
+        padx=padx,
+        pady=pady,
+        fg=style["fg"],
+        bg=style["bg"],
+        activebackground=style["activebackground"],
+        activeforeground=style["activeforeground"],
+        highlightthickness=0,
+        cursor="hand2",
+    )
+
+
+def create_badge(parent, textvariable, fg: str, bg: str):
+    return tk.Label(
+        parent,
+        textvariable=textvariable,
+        font=("Segoe UI Semibold", 9),
+        fg=fg,
+        bg=bg,
+        padx=11,
+        pady=6,
+    )
+
+
+def add_brand_strip(parent, *, top_pad: tuple[int, int] = (0, 14)):
+    strip = tk.Frame(parent, bg=BG_PANEL, height=6)
+    strip.pack(fill="x", pady=top_pad)
+    strip.pack_propagate(False)
+    tk.Frame(strip, bg=ACCENT, width=180, height=6).pack(side="left")
+    tk.Frame(strip, bg=ACCENT_ALT, width=110, height=6).pack(side="left", padx=(8, 0))
+    tk.Frame(strip, bg=ALERT, width=56, height=6).pack(side="left", padx=(8, 0))
+    return strip
+
+
+def draw_rounded_rect(canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, radius: int, fill: str, outline: str) -> None:
+    radius = max(4, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
+    points = [
+        x1 + radius, y1,
+        x2 - radius, y1,
+        x2, y1,
+        x2, y1 + radius,
+        x2, y2 - radius,
+        x2, y2,
+        x2 - radius, y2,
+        x1 + radius, y2,
+        x1, y2,
+        x1, y2 - radius,
+        x1, y1 + radius,
+        x1, y1,
+    ]
+    canvas.create_polygon(points, smooth=True, splinesteps=24, fill=fill, outline=outline, width=1, tags=("shape",))
+
+
+def create_rounded_container(parent, *, bg: str, fill: str, outline: str, radius: int = 16, padding: tuple[int, int] = (14, 12)):
+    canvas = tk.Canvas(parent, bg=bg, highlightthickness=0, bd=0, relief="flat")
+    inner = tk.Frame(canvas, bg=fill)
+    window_id = canvas.create_window((padding[0], padding[1]), window=inner, anchor="nw")
+
+    def refresh(_event=None):
+        canvas.delete("shape")
+        width = max(canvas.winfo_width(), padding[0] * 2 + 20)
+        height = max(canvas.winfo_height(), padding[1] * 2 + 20)
+        draw_rounded_rect(canvas, 1, 1, width - 2, height - 2, radius, fill, outline)
+        canvas.itemconfigure(window_id, width=max(width - padding[0] * 2, 20), height=max(height - padding[1] * 2, 20))
+        canvas.tag_lower("shape")
+
+    canvas.bind("<Configure>", refresh)
+    canvas.after(10, refresh)
+    return canvas, inner
 
 
 def strip_ini_section(content: str, section_name: str) -> str:
@@ -417,6 +590,7 @@ class ConfigStore:
             "mark_save_password": False,
             "encrypted_password": "",
             "last_update_check": "",
+            "recent_clients": [],
         }
         if not self.path.exists():
             self.path.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -435,12 +609,18 @@ class ConfigStore:
         self.path.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
 
     @property
-    def root_path(self) -> Path:
-        return Path(self.data["root_path"])
+    def root_path(self) -> Path | None:
+        value = str(self.data.get("root_path", "")).strip()
+        return Path(value) if value else None
+
+    @property
+    def root_path_text(self) -> str:
+        root_path = self.root_path
+        return str(root_path) if root_path else ""
 
     @root_path.setter
-    def root_path(self, value: Path) -> None:
-        self.data["root_path"] = str(value)
+    def root_path(self, value: Path | str | None) -> None:
+        self.data["root_path"] = str(value).strip() if value else ""
         self.save()
 
     @property
@@ -498,6 +678,43 @@ class ConfigStore:
     @last_update_check.setter
     def last_update_check(self, value: str) -> None:
         self.data["last_update_check"] = value.strip()
+        self.save()
+
+    @property
+    def recent_clients(self) -> list[dict[str, str]]:
+        items = self.data.get("recent_clients", [])
+        if not isinstance(items, list):
+            return []
+        normalized = []
+        for item in items[:3]:
+            if not isinstance(item, dict):
+                continue
+            display_name = str(item.get("display_name", "")).strip()
+            folder_path = str(item.get("folder_path", "")).strip()
+            if display_name and folder_path:
+                normalized.append(
+                    {
+                        "display_name": display_name,
+                        "folder_path": folder_path,
+                    }
+                )
+        return normalized
+
+    def remember_recent_client(self, entry: ClientEntry) -> None:
+        normalized_path = str(entry.folder_path)
+        items = [
+            item
+            for item in self.recent_clients
+            if str(item.get("folder_path", "")).strip().lower() != normalized_path.lower()
+        ]
+        items.insert(
+            0,
+            {
+                "display_name": entry.display_name,
+                "folder_path": normalized_path,
+            },
+        )
+        self.data["recent_clients"] = items[:3]
         self.save()
 
 
@@ -734,6 +951,20 @@ class TrayIcon(threading.Thread):
         data.uID = 1
         shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(data))
 
+    def show_balloon(self, title: str, message: str, timeout_ms: int = 6000) -> None:
+        if not self.hwnd:
+            return
+        data = NOTIFYICONDATAW()
+        data.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
+        data.hWnd = self.hwnd
+        data.uID = 1
+        data.uFlags = NIF_INFO
+        data.dwInfoFlags = NIIF_INFO
+        data.uTimeoutOrVersion = max(1000, min(timeout_ms, 30000))
+        data.szInfoTitle = (title or APP_NAME)[:63]
+        data.szInfo = (message or "")[:255]
+        shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(data))
+
     def _show_menu(self) -> None:
         menu = user32.CreatePopupMenu()
         user32.AppendMenuW(menu, MF_STRING, TRAY_CMD_SHOW_PANEL, "Abrir painel")
@@ -793,7 +1024,7 @@ class SettingsWindow(tk.Toplevel):
         self.grab_set()
         if getattr(app, "app_icon", None):
             self.iconphoto(True, app.app_icon)
-        self.path_var = tk.StringVar(value=str(app.config_store.root_path))
+        self.path_var = tk.StringVar(value=app.config_store.root_path_text)
         self.username_var = tk.StringVar(value=app.config_store.preferred_username)
         self.password_var = tk.StringVar()
         self.password_var.trace_add("write", lambda *_: self._on_password_changed())
@@ -858,7 +1089,8 @@ class SettingsWindow(tk.Toplevel):
         self.geometry(f"{width}x{height}+{x}+{y}")
 
     def _select_path(self) -> None:
-        selected = filedialog.askdirectory(title="Selecione a pasta raiz dos clientes", initialdir=self.path_var.get() or str(self.app.config_store.root_path))
+        initial_dir = self.path_var.get().strip() or self.app.config_store.root_path_text or str(Path.home())
+        selected = filedialog.askdirectory(title="Selecione a pasta raiz dos clientes", initialdir=initial_dir)
         if selected:
             self.path_var.set(selected)
 
@@ -884,8 +1116,12 @@ class SettingsWindow(tk.Toplevel):
             self._refresh_password_status()
 
     def _save(self) -> None:
-        selected_path = Path(self.path_var.get().strip())
-        if not selected_path.exists():
+        selected_text = self.path_var.get().strip()
+        if not selected_text:
+            messagebox.showerror("Pasta invalida", "Informe a pasta dos clientes.")
+            return
+        selected_path = Path(selected_text)
+        if not selected_path.exists() or not selected_path.is_dir():
             messagebox.showerror("Pasta invalida", "Selecione uma pasta valida.")
             return
         self.app.config_store.root_path = selected_path
@@ -918,7 +1154,7 @@ class SettingsWindow(tk.Toplevel):
         self.grab_set()
         if getattr(app, "app_icon", None):
             self.iconphoto(True, app.app_icon)
-        self.path_var = tk.StringVar(value=str(app.config_store.root_path))
+        self.path_var = tk.StringVar(value=app.config_store.root_path_text)
         self.username_var = tk.StringVar(value=app.config_store.preferred_username)
         self.scroll_canvas = None
         self.scroll_window = None
@@ -930,7 +1166,7 @@ class SettingsWindow(tk.Toplevel):
         container = tk.Frame(self, bg=BG_APP)
         container.pack(fill="both", expand=True)
 
-        content_shell = tk.Frame(container, bg=BG_APP, padx=18, pady=18)
+        content_shell = tk.Frame(container, bg=BG_APP, padx=22, pady=22)
         content_shell.pack(fill="both", expand=True, pady=(0, 8))
 
         self.scroll_canvas = tk.Canvas(content_shell, bg=BG_APP, highlightthickness=0, bd=0)
@@ -945,7 +1181,7 @@ class SettingsWindow(tk.Toplevel):
         self.scroll_canvas.bind("<Configure>", self._sync_scroll_width)
         self.bind("<MouseWheel>", self._on_mousewheel)
 
-        card = tk.Frame(scroll_body, bg=BG_PANEL, padx=18, pady=18, highlightbackground=BORDER, highlightthickness=1)
+        card = tk.Frame(scroll_body, bg=BG_PANEL, padx=24, pady=22, highlightbackground=BORDER, highlightthickness=1)
         card.pack(fill="both", expand=True)
 
         title_row = tk.Frame(card, bg=BG_PANEL)
@@ -954,35 +1190,36 @@ class SettingsWindow(tk.Toplevel):
             tk.Label(title_row, image=self.app.header_logo_small, bg=BG_PANEL).pack(side="left", padx=(0, 12))
         text_col = tk.Frame(title_row, bg=BG_PANEL)
         text_col.pack(side="left", fill="x", expand=True)
-        tk.Label(text_col, text="Configuracoes do buscador", font=("Segoe UI Semibold", 15), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Label(text_col, text="Configuracoes do buscador", font=("Segoe UI Semibold", 16), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
         tk.Label(text_col, text="Defina a pasta dos clientes e o usuario padrao da tela do HeadCargo.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(6, 14))
+        add_brand_strip(text_col, top_pad=(12, 0))
 
         tk.Label(card, text="Pasta dos clientes", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
         row = tk.Frame(card, bg=BG_PANEL)
         row.pack(fill="x", pady=(6, 12))
-        tk.Entry(row, textvariable=self.path_var, font=("Consolas", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(side="left", fill="x", expand=True, ipady=8)
-        tk.Button(row, text="Selecionar", command=self._select_path, font=("Segoe UI", 9), relief="flat", bd=0, padx=14, pady=8, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
+        tk.Entry(row, textvariable=self.path_var, font=("Consolas", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(side="left", fill="x", expand=True, ipady=10)
+        create_button(row, "Selecionar", self._select_path).pack(side="left", padx=(10, 0))
 
         tk.Label(card, text="Usuario padrao do HeadCargo", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Entry(card, textvariable=self.username_var, font=("Segoe UI", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(fill="x", pady=(6, 12), ipady=8)
+        tk.Entry(card, textvariable=self.username_var, font=("Segoe UI", 10), relief="flat", bd=0, fg=TEXT_MAIN, bg=BG_RESULTS, insertbackground=TEXT_MAIN).pack(fill="x", pady=(6, 12), ipady=10)
         tk.Label(card, text="Comportamento do login", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        login_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        login_card = tk.Frame(card, bg=BG_PANEL_ALT, padx=14, pady=14, highlightbackground=BORDER, highlightthickness=1)
         login_card.pack(fill="x", pady=(6, 0))
-        tk.Label(login_card, text="O buscador preenche apenas o usuario do HeadCargo e deixa o foco na senha.", font=("Segoe UI", 9), fg=TEXT_MAIN, bg=BG_RESULTS, justify="left", anchor="w", wraplength=590).pack(fill="x")
-        tk.Label(login_card, text="A senha deve ser digitada manualmente na tela do cliente. Nenhuma senha fica salva pelo buscador.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", anchor="w", wraplength=590).pack(fill="x", pady=(8, 0))
+        tk.Label(login_card, text="O buscador preenche apenas o usuario do HeadCargo e deixa o foco na senha.", font=("Segoe UI", 9), fg=TEXT_MAIN, bg=BG_PANEL_ALT, justify="left", anchor="w", wraplength=590).pack(fill="x")
+        tk.Label(login_card, text="A senha deve ser digitada manualmente na tela do cliente. Nenhuma senha fica salva pelo buscador.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL_ALT, justify="left", anchor="w", wraplength=590).pack(fill="x", pady=(8, 0))
 
         tk.Label(card, text="Atualizacoes automaticas", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w", pady=(16, 0))
-        update_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        update_card = tk.Frame(card, bg=BG_PANEL_ALT, padx=14, pady=14, highlightbackground=BORDER, highlightthickness=1)
         update_card.pack(fill="x", pady=(6, 0))
-        tk.Label(update_card, text="Origem: GitHub / kauanlauer/Buscador-Cliente", font=("Consolas", 9), fg=TEXT_MAIN, bg=BG_RESULTS, justify="left", anchor="w").pack(fill="x")
-        tk.Label(update_card, text="O programa verifica novas versoes todo dia e voce tambem pode usar o botao 'Verificar atualizacao' no painel principal.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", wraplength=590).pack(anchor="w", pady=(8, 0))
+        tk.Label(update_card, text="Origem: GitHub / kauanlauer/Buscador-Cliente", font=("Consolas", 9), fg=ACCENT_ALT, bg=BG_PANEL_ALT, justify="left", anchor="w").pack(fill="x")
+        tk.Label(update_card, text="O programa verifica novas versoes todo dia e voce tambem pode usar o botao 'Verificar atualizacao' no painel principal.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL_ALT, justify="left", wraplength=590).pack(anchor="w", pady=(8, 0))
 
-        footer = tk.Frame(container, bg=BG_APP, padx=18, pady=18)
+        footer = tk.Frame(container, bg=BG_APP, padx=22, pady=22)
         footer.pack(fill="x", side="bottom")
-        footer_card = tk.Frame(footer, bg=BG_PANEL, padx=18, pady=14, highlightbackground=BORDER, highlightthickness=1)
+        footer_card = tk.Frame(footer, bg=BG_PANEL, padx=20, pady=16, highlightbackground=BORDER, highlightthickness=1)
         footer_card.pack(fill="x")
-        tk.Button(footer_card, text="Salvar", command=self._save, font=("Segoe UI Semibold", 10), relief="flat", bd=0, padx=18, pady=10, fg="#ffffff", bg=ACCENT, activebackground=ACCENT_HOVER, activeforeground="#ffffff").pack(side="left")
-        tk.Button(footer_card, text="Cancelar", command=self.destroy, font=("Segoe UI", 10), relief="flat", bd=0, padx=18, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
+        create_button(footer_card, "Salvar", self._save, variant="primary").pack(side="left")
+        create_button(footer_card, "Cancelar", self.destroy).pack(side="left", padx=(10, 0))
 
     def _fit_to_content(self) -> None:
         self.update_idletasks()
@@ -1011,13 +1248,18 @@ class SettingsWindow(tk.Toplevel):
             self.scroll_canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def _select_path(self) -> None:
-        selected = filedialog.askdirectory(title="Selecione a pasta raiz dos clientes", initialdir=self.path_var.get() or str(self.app.config_store.root_path))
+        initial_dir = self.path_var.get().strip() or self.app.config_store.root_path_text or str(Path.home())
+        selected = filedialog.askdirectory(title="Selecione a pasta raiz dos clientes", initialdir=initial_dir)
         if selected:
             self.path_var.set(selected)
 
     def _save(self) -> None:
-        selected_path = Path(self.path_var.get().strip())
-        if not selected_path.exists():
+        selected_text = self.path_var.get().strip()
+        if not selected_text:
+            messagebox.showerror("Pasta invalida", "Informe a pasta dos clientes.")
+            return
+        selected_path = Path(selected_text)
+        if not selected_path.exists() or not selected_path.is_dir():
             messagebox.showerror("Pasta invalida", "Selecione uma pasta valida.")
             return
         self.app.config_store.root_path = selected_path
@@ -1028,6 +1270,313 @@ class SettingsWindow(tk.Toplevel):
         self.app.refresh_index()
         self.app.set_status("Configuracoes salvas.")
         self.destroy()
+
+
+class SearchPalette(tk.Toplevel):
+    def __init__(self, master) -> None:
+        super().__init__(master)
+        self.app = master
+        self.filtered_entries = []
+        self.current_mode = "search"
+        self.selected_index = -1
+        self.result_widgets = []
+        self.query_var = tk.StringVar()
+        self.status_var = tk.StringVar(value="Digite o nome do cliente.")
+        self.result_count_var = tk.StringVar(value="")
+        self.chrome_color = SEARCH_TRANSPARENT
+        self.surface_color = "#f6fbf7"
+        self.search_color = "#fbfefd"
+        self.results_color = "#eef5f1"
+        self.selected_fill = "#dceedd"
+        self.selected_outline = "#bad4c1"
+        self.withdraw()
+        self.overrideredirect(True)
+        self.configure(bg=self.chrome_color)
+        try:
+            self.wm_attributes("-transparentcolor", self.chrome_color)
+        except tk.TclError:
+            pass
+        try:
+            self.wm_attributes("-alpha", 0.94)
+        except tk.TclError:
+            pass
+        self._build_ui()
+        self._bind_events()
+
+    def _build_ui(self) -> None:
+        shell = tk.Frame(self, bg=self.chrome_color)
+        shell.pack(fill="both", expand=True)
+        body = tk.Frame(shell, bg=self.chrome_color, padx=0, pady=0)
+        body.pack(fill="both", expand=True)
+
+        search_shell, search_box = create_rounded_container(
+            body,
+            bg=self.chrome_color,
+            fill=self.search_color,
+            outline=BORDER,
+            radius=28,
+            padding=(18, 16),
+        )
+        search_shell.pack(fill="x")
+
+        topbar = tk.Frame(search_box, bg=self.search_color)
+        topbar.pack(fill="x")
+        brand = tk.Frame(topbar, bg=self.search_color)
+        brand.pack(side="left")
+        tk.Frame(brand, bg=ACCENT, width=24, height=4).pack(side="left")
+        tk.Frame(brand, bg=ACCENT_ALT, width=14, height=4).pack(side="left", padx=(6, 0))
+        tk.Frame(brand, bg=ALERT, width=8, height=4).pack(side="left", padx=(6, 0))
+        tk.Label(topbar, text="Buscador Cliente", font=("Segoe UI Semibold", 10), fg=TEXT_MUTED, bg=self.search_color).pack(side="left", padx=(12, 0))
+        tk.Label(topbar, text="Alt+Espaco", font=("Segoe UI Semibold", 9), fg=ACCENT_ALT, bg=ACCENT_ALT_SOFT, padx=10, pady=5).pack(side="right")
+
+        search_row = tk.Frame(search_box, bg=self.search_color)
+        search_row.pack(fill="x", pady=(14, 0))
+        tk.Label(search_row, text=">", font=("Segoe UI Semibold", 19), fg=ACCENT, bg=self.search_color).pack(side="left", padx=(2, 14))
+        self.search_entry = tk.Entry(
+            search_row,
+            textvariable=self.query_var,
+            font=("Segoe UI", 19),
+            bd=0,
+            relief="flat",
+            bg=self.search_color,
+            fg=TEXT_MAIN,
+            insertbackground=TEXT_MAIN,
+        )
+        self.search_entry.pack(side="left", fill="x", expand=True)
+
+        info_row = tk.Frame(search_box, bg=self.search_color)
+        info_row.pack(fill="x", pady=(12, 0))
+        tk.Label(info_row, textvariable=self.result_count_var, font=("Segoe UI Semibold", 9), fg=ACCENT_ALT, bg=self.search_color).pack(side="left")
+        tk.Label(info_row, text="Digite para filtrar instantaneamente.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=self.search_color).pack(side="right")
+
+        results_shell, self.results_panel = create_rounded_container(
+            body,
+            bg=self.chrome_color,
+            fill=self.results_color,
+            outline=BORDER,
+            radius=22,
+            padding=(12, 12),
+        )
+        self.results_shell = results_shell
+        self.results_shell.pack(fill="both", expand=True, pady=(10, 0))
+
+        results_header = tk.Frame(self.results_panel, bg=self.results_color)
+        results_header.pack(fill="x", padx=10, pady=(2, 8))
+        tk.Frame(results_header, bg=ACCENT, width=18, height=4).pack(side="left")
+        tk.Frame(results_header, bg=ACCENT_ALT, width=10, height=4).pack(side="left", padx=(5, 0))
+        tk.Frame(results_header, bg=ALERT, width=6, height=4).pack(side="left", padx=(5, 0))
+        self.section_title_var = tk.StringVar(value="Recentes")
+        tk.Label(results_header, textvariable=self.section_title_var, font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=self.results_color).pack(side="left", padx=(12, 0))
+        tk.Label(results_header, text="Enter abre o primeiro item.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=self.results_color).pack(side="right")
+
+        self.results_body = tk.Frame(self.results_panel, bg=self.results_color)
+        self.results_body.pack(fill="both", expand=True)
+
+        self.placeholder_label = tk.Label(
+            self.results_body,
+            text="Nenhum cliente recente ainda.",
+            font=("Segoe UI", 10),
+            fg=TEXT_MUTED,
+            bg=self.results_color,
+            anchor="w",
+            justify="left",
+            padx=14,
+            pady=16,
+            wraplength=620,
+        )
+        footer = tk.Frame(body, bg=self.chrome_color)
+        footer.pack(fill="x", pady=(10, 0))
+        tk.Label(footer, textvariable=self.status_var, font=("Segoe UI", 9), fg="#e9f1ec", bg=self.chrome_color, anchor="w", justify="left", wraplength=700).pack(fill="x")
+
+    def _bind_events(self) -> None:
+        self.query_var.trace_add("write", lambda *_: self.update_results())
+        self.search_entry.bind("<Down>", self._focus_next_result)
+        self.search_entry.bind("<Up>", self._focus_previous_result)
+        self.search_entry.bind("<Return>", lambda _: self.launch_selected())
+        self.search_entry.bind("<Escape>", lambda _: self.hide_palette())
+        self.bind("<Escape>", lambda _: self.hide_palette())
+        self.bind("<FocusOut>", lambda _: self.after(120, self._hide_if_unfocused))
+
+    def _hide_if_unfocused(self) -> None:
+        focused = self.focus_displayof()
+        if focused not in {self, self.search_entry}:
+            self.hide_palette()
+
+    def show_palette(self) -> None:
+        self.query_var.set("")
+        self.update_results()
+        self.deiconify()
+        self.lift()
+        self.attributes("-topmost", True)
+        self._reposition_palette()
+        self.after(1, self._reposition_palette)
+        self.after(10, self.search_entry.focus_force)
+        self.after(10, lambda: self.search_entry.icursor(tk.END))
+
+    def hide_palette(self) -> None:
+        self.withdraw()
+
+    def toggle_palette(self) -> None:
+        self.show_palette() if self.state() == "withdrawn" else self.hide_palette()
+
+    def _clear_result_widgets(self) -> None:
+        for widget in self.result_widgets:
+            widget.destroy()
+        self.result_widgets = []
+
+    def _reposition_palette(self) -> None:
+        self.update_idletasks()
+        width = 760
+        rows = max(len(self.filtered_entries), 1)
+        height = 158 + min(rows, MAX_VISIBLE_RESULTS) * 48
+        if self.current_mode == "empty":
+            height = 206
+        x, y = center_geometry_on_active_monitor(width, height)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _set_entries(self, entries: list[ClientEntry], *, mode: str, section_title: str, status: str) -> None:
+        self.current_mode = mode
+        self.filtered_entries = entries[:MAX_VISIBLE_RESULTS]
+        self.selected_index = 0 if self.filtered_entries else -1
+        self.section_title_var.set(section_title)
+        self.result_count_var.set(section_title if mode in {"recent", "suggestion"} else f"{len(self.filtered_entries)} resultado(s)")
+        self.status_var.set(status)
+        self._render_results()
+
+    def _show_empty(self, section_title: str, message: str, status: str) -> None:
+        self.current_mode = "empty"
+        self.filtered_entries = []
+        self.selected_index = -1
+        self.section_title_var.set(section_title)
+        self.result_count_var.set(section_title)
+        self.status_var.set(status)
+        self._render_results(message)
+
+    def _render_results(self, empty_message: str | None = None) -> None:
+        self._clear_result_widgets()
+        self.placeholder_label.pack_forget()
+        if empty_message is not None:
+            self.placeholder_label.configure(text=empty_message)
+            self.placeholder_label.pack(fill="both", expand=True)
+            self._reposition_palette()
+            return
+
+        for index, entry in enumerate(self.filtered_entries):
+            row_bg = self.selected_fill if index == self.selected_index else self.results_color
+            row = tk.Frame(
+                self.results_body,
+                bg=row_bg,
+                padx=12,
+                pady=10,
+                highlightbackground=self.selected_outline if index == self.selected_index else self.results_color,
+                highlightthickness=1,
+                cursor="hand2",
+            )
+            row.pack(fill="x", padx=2, pady=3)
+
+            bullet = tk.Frame(row, bg=ACCENT if index == self.selected_index else ACCENT_ALT_SOFT, width=6)
+            bullet.pack(side="left", fill="y")
+
+            text_block = tk.Frame(row, bg=row_bg)
+            text_block.pack(side="left", fill="both", expand=True, padx=(12, 0))
+            tk.Label(
+                text_block,
+                text=entry.display_name,
+                font=("Segoe UI Semibold", 12),
+                fg=TEXT_MAIN,
+                bg=row_bg,
+                anchor="w",
+            ).pack(anchor="w")
+            detail_text = "Cliente recente" if self.current_mode == "recent" else str(entry.folder_path)
+            tk.Label(
+                text_block,
+                text=detail_text,
+                font=("Segoe UI", 9),
+                fg=TEXT_MUTED,
+                bg=row_bg,
+                anchor="w",
+                wraplength=560,
+            ).pack(anchor="w", pady=(2, 0))
+
+            badge_text = "RECENTE" if self.current_mode == "recent" else "ABRIR"
+            badge_bg = BADGE_BLUE_BG if self.current_mode == "recent" else BADGE_GREEN_BG
+            badge_fg = ACCENT_ALT if self.current_mode == "recent" else ACCENT
+            badge = tk.Label(row, text=badge_text, font=("Segoe UI Semibold", 8), fg=badge_fg, bg=badge_bg, padx=10, pady=5)
+            badge.pack(side="right", padx=(10, 0))
+
+            for target in (row, bullet, text_block, badge, *text_block.winfo_children()):
+                target.bind("<Enter>", lambda _, i=index: self._select(i))
+                target.bind("<Button-1>", lambda _, i=index: self._launch_index(i))
+
+            self.result_widgets.append(row)
+
+        self._reposition_palette()
+        self._update_status_for_selection()
+
+    def update_results(self) -> None:
+        if not self.app.config_store.root_path:
+            self._show_empty("Configuracao pendente", "Defina a pasta dos clientes para liberar a busca.", "Abra Configuracoes e selecione a pasta correta.")
+            return
+        query = normalize_text(self.query_var.get())
+        if not query:
+            recent_entries = self.app.recent_entries()[:3]
+            if recent_entries:
+                self._set_entries(recent_entries, mode="recent", section_title="Recentes", status="Ultimos 3 clientes abertos.")
+                return
+            suggestion_entries = self.app.entries[:MAX_VISIBLE_RESULTS]
+            if suggestion_entries:
+                self._set_entries(suggestion_entries, mode="suggestion", section_title="Sugestoes", status="Sem historico recente ainda. Digite para filtrar.")
+                return
+            self._show_empty("Busca", "Indexando clientes..." if self.app.is_scanning else "Nenhum cliente disponivel ainda.", "Aguarde a indexacao terminar.")
+            return
+
+        ranked = self.app.rank_entries(query)[:MAX_VISIBLE_RESULTS]
+        if ranked:
+            self._set_entries(ranked, mode="search", section_title="Resultados", status="Resultados atualizados enquanto voce digita.")
+            self._update_status_for_selection()
+            return
+        self._show_empty("Resultados", "Nenhum cliente encontrado para esse texto.", "Tente outro nome ou reindexe a pasta.")
+
+    def _focus_next_result(self, _=None):
+        if self.filtered_entries:
+            current = self.selected_index if self.selected_index >= 0 else 0
+            idx = min(current + 1, len(self.filtered_entries) - 1)
+            self._select(idx)
+        return "break"
+
+    def _focus_previous_result(self, _=None):
+        if self.filtered_entries:
+            current = self.selected_index if self.selected_index >= 0 else 0
+            idx = max(current - 1, 0)
+            self._select(idx)
+        return "break"
+
+    def _select(self, index: int) -> None:
+        if not self.filtered_entries:
+            return
+        self.selected_index = max(0, min(index, len(self.filtered_entries) - 1))
+        self._render_results()
+        self._update_status_for_selection()
+
+    def _selected_entry(self) -> ClientEntry | None:
+        if 0 <= self.selected_index < len(self.filtered_entries):
+            return self.filtered_entries[self.selected_index]
+        return None
+
+    def _update_status_for_selection(self) -> None:
+        entry = self._selected_entry()
+        if entry:
+            prefix = "Recente" if self.current_mode == "recent" else "Cliente"
+            self.status_var.set(f"{prefix}: {entry.display_name}")
+
+    def _launch_index(self, index: int) -> None:
+        self.selected_index = index
+        self.launch_selected()
+
+    def launch_selected(self) -> None:
+        entry = self._selected_entry()
+        if entry:
+            self.app.launch_entry(entry)
 
 
 class UpdatesLogWindow(tk.Toplevel):
@@ -1046,10 +1595,10 @@ class UpdatesLogWindow(tk.Toplevel):
         self._center()
 
     def _build_ui(self) -> None:
-        shell = tk.Frame(self, bg=BG_APP, padx=18, pady=18)
+        shell = tk.Frame(self, bg=BG_APP, padx=22, pady=22)
         shell.pack(fill="both", expand=True)
 
-        card = tk.Frame(shell, bg=BG_PANEL, padx=18, pady=18, highlightbackground=BORDER, highlightthickness=1)
+        card = tk.Frame(shell, bg=BG_PANEL, padx=24, pady=22, highlightbackground=BORDER, highlightthickness=1)
         card.pack(fill="both", expand=True)
 
         title_row = tk.Frame(card, bg=BG_PANEL)
@@ -1058,13 +1607,14 @@ class UpdatesLogWindow(tk.Toplevel):
             tk.Label(title_row, image=self.app.header_logo_small, bg=BG_PANEL).pack(side="left", padx=(0, 12))
         text_col = tk.Frame(title_row, bg=BG_PANEL)
         text_col.pack(side="left", fill="x", expand=True)
-        tk.Label(text_col, text="Historico de ajustes do buscador", font=("Segoe UI Semibold", 15), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Label(text_col, text="Historico de ajustes do buscador", font=("Segoe UI Semibold", 16), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
         tk.Label(text_col, text="Registro interno das correcoes e melhorias aplicadas neste programa, inclusive ajustes ainda nao publicados.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", wraplength=620).pack(anchor="w", pady=(6, 0))
+        add_brand_strip(text_col, top_pad=(12, 0))
 
-        status_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        status_card = tk.Frame(card, bg=BG_PANEL_ALT, padx=14, pady=14, highlightbackground=BORDER, highlightthickness=1)
         status_card.pack(fill="x", pady=(16, 0))
-        tk.Label(status_card, text=f"Versao instalada: {APP_VERSION}", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_RESULTS, anchor="w").pack(fill="x")
-        tk.Label(status_card, text="Publicacao no GitHub permanece pausada ate os bugs serem validados e fechados.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", wraplength=640).pack(fill="x", pady=(6, 0))
+        tk.Label(status_card, text=f"Versao instalada: {APP_VERSION}", font=("Segoe UI Semibold", 10), fg=ACCENT_ALT, bg=BG_PANEL_ALT, anchor="w").pack(fill="x")
+        tk.Label(status_card, text="Publicacao no GitHub permanece pausada ate os bugs serem validados e fechados.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL_ALT, justify="left", wraplength=640).pack(fill="x", pady=(6, 0))
 
         text_frame = tk.Frame(card, bg=BG_PANEL)
         text_frame.pack(fill="both", expand=True, pady=(16, 0))
@@ -1086,15 +1636,12 @@ class UpdatesLogWindow(tk.Toplevel):
         history_text.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        formatted_entries = []
-        for entry in CHANGELOG_ENTRIES:
-            formatted_entries.append(format_changelog_entry(entry))
-        history_text.insert("1.0", "\n\n".join(formatted_entries))
+        history_text.insert("1.0", "\n\n".join(format_changelog_entry(entry) for entry in CHANGELOG_ENTRIES))
         history_text.configure(state="disabled")
 
         footer = tk.Frame(card, bg=BG_PANEL)
         footer.pack(fill="x", pady=(16, 0))
-        tk.Button(footer, text="Fechar", command=self.destroy, font=("Segoe UI", 10), relief="flat", bd=0, padx=18, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(anchor="e")
+        create_button(footer, "Fechar", self.destroy).pack(anchor="e")
 
     def _center(self) -> None:
         self.update_idletasks()
@@ -1103,151 +1650,6 @@ class UpdatesLogWindow(tk.Toplevel):
         x = max((self.winfo_screenwidth() - width) // 2, 0)
         y = max((self.winfo_screenheight() - height) // 6, 20)
         self.geometry(f"{width}x{height}+{x}+{y}")
-
-
-class SearchPalette(tk.Toplevel):
-    def __init__(self, master) -> None:
-        super().__init__(master)
-        self.app = master
-        self.filtered_entries = []
-        self.query_var = tk.StringVar()
-        self.status_var = tk.StringVar(value="Digite o nome do cliente.")
-        self.result_count_var = tk.StringVar(value="")
-        self.withdraw()
-        self.overrideredirect(True)
-        self.configure(bg="#d6deea")
-        self._build_ui()
-        self._bind_events()
-
-    def _build_ui(self) -> None:
-        shell = tk.Frame(self, bg="#d6deea", padx=1, pady=1)
-        shell.pack(fill="both", expand=True)
-        body = tk.Frame(shell, bg=BG_PANEL)
-        body.pack(fill="both", expand=True)
-        header = tk.Frame(body, bg=BG_PANEL, padx=22, pady=18)
-        header.pack(fill="x")
-        tk.Label(header, text="Pesquisar cliente", font=("Segoe UI Semibold", 15), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(header, text="Alt+Espaco abre a busca. Enter executa o Desktop.exe.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(4, 0))
-        input_wrap = tk.Frame(body, bg=BG_PANEL, padx=22)
-        input_wrap.pack(fill="x")
-        search_box = tk.Frame(input_wrap, bg=BG_INPUT, padx=14, pady=10)
-        search_box.pack(fill="x")
-        tk.Label(search_box, text=">", font=("Consolas", 14), fg=ACCENT, bg=BG_INPUT).pack(side="left", padx=(0, 10))
-        self.search_entry = tk.Entry(search_box, textvariable=self.query_var, font=("Segoe UI", 16), bd=0, relief="flat", bg=BG_INPUT, fg=TEXT_MAIN, insertbackground=TEXT_MAIN)
-        self.search_entry.pack(fill="x", expand=True)
-        results_wrap = tk.Frame(body, bg=BG_PANEL, padx=22)
-        results_wrap.pack(fill="both", expand=True, pady=(14, 18))
-        self.placeholder_label = tk.Label(results_wrap, text="Digite para filtrar. Nenhum cliente aparece com a busca vazia.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_RESULTS, anchor="w", justify="left", padx=16, pady=16)
-        self.placeholder_label.pack(fill="x")
-        self.results_panel = tk.Frame(results_wrap, bg=BG_RESULTS)
-        top_line = tk.Frame(self.results_panel, bg=BG_RESULTS)
-        top_line.pack(fill="x", padx=14, pady=(12, 6))
-        tk.Label(top_line, textvariable=self.result_count_var, font=("Segoe UI Semibold", 9), fg=TEXT_MUTED, bg=BG_RESULTS).pack(side="left")
-        self.result_list = tk.Listbox(self.results_panel, activestyle="none", font=("Segoe UI", 11), bd=0, relief="flat", bg=BG_RESULTS, fg=TEXT_MAIN, selectbackground="#dbeafe", selectforeground=TEXT_MAIN, highlightthickness=0, exportselection=False)
-        self.result_list.pack(fill="both", expand=True, padx=8, pady=(0, 4))
-        footer = tk.Frame(body, bg=BG_PANEL, padx=22)
-        footer.pack(fill="x", pady=(0, 16))
-        tk.Label(footer, textvariable=self.status_var, font=("Segoe UI", 9), fg=TEXT_SOFT, bg=BG_PANEL, anchor="w", justify="left").pack(fill="x")
-
-    def _bind_events(self) -> None:
-        self.query_var.trace_add("write", lambda *_: self.update_results())
-        self.search_entry.bind("<Down>", self._focus_next_result)
-        self.search_entry.bind("<Up>", self._focus_previous_result)
-        self.search_entry.bind("<Return>", lambda _: self.launch_selected())
-        self.search_entry.bind("<Escape>", lambda _: self.hide_palette())
-        self.result_list.bind("<Double-Button-1>", lambda _: self.launch_selected())
-        self.result_list.bind("<Return>", lambda _: self.launch_selected())
-        self.result_list.bind("<<ListboxSelect>>", lambda _: self._update_status_for_selection())
-        self.result_list.bind("<Escape>", lambda _: self.hide_palette())
-        self.bind("<Escape>", lambda _: self.hide_palette())
-        self.bind("<FocusOut>", lambda _: self.after(120, self._hide_if_unfocused))
-
-    def _hide_if_unfocused(self) -> None:
-        focused = self.focus_displayof()
-        if focused not in {self, self.search_entry, self.result_list}:
-            self.hide_palette()
-
-    def show_palette(self) -> None:
-        self.deiconify()
-        width, height = 720, 330
-        x = max((self.winfo_screenwidth() - width) // 2, 0)
-        y = max((self.winfo_screenheight() - height) // 5, 0)
-        self.geometry(f"{width}x{height}+{x}+{y}")
-        self.lift()
-        self.attributes("-topmost", True)
-        self.query_var.set("")
-        self.update_results()
-        self.after(10, self.search_entry.focus_force)
-
-    def hide_palette(self) -> None:
-        self.withdraw()
-
-    def toggle_palette(self) -> None:
-        self.show_palette() if self.state() == "withdrawn" else self.hide_palette()
-
-    def update_results(self) -> None:
-        query = normalize_text(self.query_var.get())
-        if not query:
-            self.filtered_entries = []
-            self.result_list.delete(0, tk.END)
-            self.results_panel.pack_forget()
-            self.placeholder_label.configure(text="Digite para filtrar. Nenhum cliente aparece com a busca vazia.")
-            self.placeholder_label.pack(fill="x")
-            self.result_count_var.set("")
-            self.status_var.set("Indexando clientes..." if self.app.is_scanning else f"{len(self.app.entries)} clientes prontos para busca.")
-            return
-        ranked = self.app.rank_entries(query)
-        self.filtered_entries = ranked[:MAX_VISIBLE_RESULTS]
-        self.result_list.delete(0, tk.END)
-        if not self.filtered_entries:
-            self.results_panel.pack_forget()
-            self.placeholder_label.configure(text="Nenhum cliente encontrado para esse texto.")
-            self.placeholder_label.pack(fill="x")
-            self.result_count_var.set("")
-            self.status_var.set("Tente outro nome ou reindexe a pasta.")
-            return
-        self.placeholder_label.pack_forget()
-        self.results_panel.pack(fill="both", expand=True)
-        for entry in self.filtered_entries:
-            self.result_list.insert(tk.END, entry.display_name)
-        self.result_list.selection_clear(0, tk.END)
-        self.result_list.selection_set(0)
-        self.result_list.activate(0)
-        self.result_count_var.set(f"{len(self.filtered_entries)} resultado(s)")
-        self._update_status_for_selection()
-
-    def _focus_next_result(self, _=None):
-        if self.filtered_entries:
-            idx = min((self.result_list.curselection() or (0,))[0] + 1, len(self.filtered_entries) - 1)
-            self._select(idx)
-        return "break"
-
-    def _focus_previous_result(self, _=None):
-        if self.filtered_entries:
-            idx = max((self.result_list.curselection() or (0,))[0] - 1, 0)
-            self._select(idx)
-        return "break"
-
-    def _select(self, index: int) -> None:
-        self.result_list.selection_clear(0, tk.END)
-        self.result_list.selection_set(index)
-        self.result_list.activate(index)
-        self.result_list.see(index)
-        self._update_status_for_selection()
-
-    def _selected_entry(self) -> ClientEntry | None:
-        selection = self.result_list.curselection()
-        return self.filtered_entries[selection[0]] if selection else None
-
-    def _update_status_for_selection(self) -> None:
-        entry = self._selected_entry()
-        if entry:
-            self.status_var.set(str(entry.exe_path))
-
-    def launch_selected(self) -> None:
-        entry = self._selected_entry()
-        if entry:
-            self.app.launch_entry(entry)
 
 
 class LauncherApp(tk.Tk):
@@ -1267,6 +1669,9 @@ class LauncherApp(tk.Tk):
         self.entries = []
         self.is_scanning = False
         self.is_checking_updates = False
+        self.is_prefetching_desktops = False
+        self.is_launching_client = False
+        self.prefetch_thread = None
         self.settings_window = None
         self.updates_log_window = None
         self.status_var = tk.StringVar(value="Preparando buscador...")
@@ -1337,48 +1742,58 @@ class LauncherApp(tk.Tk):
             self.header_logo_small = None
 
     def _build_ui(self) -> None:
-        container = tk.Frame(self, bg=BG_APP, padx=18, pady=18)
+        container = tk.Frame(self, bg=BG_APP, padx=22, pady=22)
         container.pack(fill="both", expand=True)
-        header = tk.Frame(container, bg=BG_PANEL, padx=20, pady=18, highlightbackground=BORDER, highlightthickness=1)
+        header = tk.Frame(container, bg=BG_PANEL, padx=24, pady=22, highlightbackground=BORDER, highlightthickness=1)
         header.pack(fill="x")
         branding = tk.Frame(header, bg=BG_PANEL)
         branding.pack(fill="x")
         if self.header_logo:
-            tk.Label(branding, image=self.header_logo, bg=BG_PANEL).pack(side="left", padx=(0, 12))
+            tk.Label(branding, image=self.header_logo, bg=BG_PANEL).pack(side="left", padx=(0, 14))
         title_block = tk.Frame(branding, bg=BG_PANEL)
         title_block.pack(side="left", fill="x", expand=True)
-        tk.Label(title_block, text=APP_NAME, font=("Segoe UI Semibold", 17), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(title_block, text="Busca rapida do Desktop.exe e preenche o usuario no login do HeadCargo.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(4, 0))
+        tk.Label(title_block, text=APP_NAME, font=("Segoe UI Semibold", 18), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Label(title_block, text="Busca corporativa com cache local, abertura automatica do cliente e preparo do login.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL).pack(anchor="w", pady=(5, 0))
+        add_brand_strip(title_block, top_pad=(12, 0))
         chips = tk.Frame(header, bg=BG_PANEL)
         chips.pack(fill="x", pady=(14, 0))
-        tk.Label(chips, textvariable=self.hotkey_var, font=("Segoe UI Semibold", 9), fg=ACCENT, bg="#e0edff", padx=10, pady=5).pack(side="left")
-        tk.Label(chips, textvariable=self.count_var, font=("Segoe UI Semibold", 9), fg=SUCCESS, bg="#dcfce7", padx=10, pady=5).pack(side="left", padx=(10, 0))
-        config_card = tk.Frame(container, bg=BG_PANEL, padx=20, pady=16, highlightbackground=BORDER, highlightthickness=1)
+        create_badge(chips, self.hotkey_var, ACCENT, BADGE_GREEN_BG).pack(side="left")
+        create_badge(chips, self.count_var, ACCENT_ALT, BADGE_BLUE_BG).pack(side="left", padx=(10, 0))
+        config_card = tk.Frame(container, bg=BG_PANEL, padx=24, pady=20, highlightbackground=BORDER, highlightthickness=1)
         config_card.pack(fill="x", pady=(14, 0))
         tk.Label(config_card, text="Pasta atual dos clientes", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(config_card, textvariable=self.folder_var, font=("Consolas", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w", wraplength=480).pack(fill="x", pady=(8, 12))
+        path_card = tk.Frame(config_card, bg=BG_PANEL_ALT, padx=14, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        path_card.pack(fill="x", pady=(8, 12))
+        tk.Label(path_card, textvariable=self.folder_var, font=("Consolas", 10), fg=TEXT_MUTED, bg=BG_PANEL_ALT, justify="left", anchor="w", wraplength=560).pack(fill="x")
         tk.Label(config_card, text="Usuario padrao do HeadCargo", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(config_card, textvariable=self.user_var, font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, anchor="w").pack(fill="x", pady=(6, 6))
+        user_card = tk.Frame(config_card, bg=BG_PANEL_ALT, padx=14, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        user_card.pack(fill="x", pady=(8, 6))
+        tk.Label(user_card, textvariable=self.user_var, font=("Segoe UI Semibold", 11), fg=TEXT_MAIN, bg=BG_PANEL_ALT, anchor="w").pack(fill="x")
         tk.Label(config_card, textvariable=self.save_password_text, font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, anchor="w").pack(fill="x")
         tk.Label(config_card, textvariable=self.local_password_text, font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, anchor="w").pack(fill="x", pady=(6, 0))
         tk.Label(config_card, text="Origem de atualizacao", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w", pady=(12, 0))
-        tk.Label(config_card, textvariable=self.update_source_var, font=("Consolas", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w", wraplength=480).pack(fill="x", pady=(6, 0))
+        source_card = tk.Frame(config_card, bg=BG_PANEL_ALT, padx=14, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        source_card.pack(fill="x", pady=(8, 0))
+        tk.Label(source_card, textvariable=self.update_source_var, font=("Consolas", 9), fg=TEXT_MUTED, bg=BG_PANEL_ALT, justify="left", anchor="w", wraplength=560).pack(fill="x")
         tk.Label(config_card, textvariable=self.update_result_text, font=("Segoe UI", 9), fg=TEXT_SOFT, bg=BG_PANEL, justify="left", anchor="w", wraplength=480).pack(fill="x", pady=(8, 0))
         actions = tk.Frame(container, bg=BG_APP)
         actions.pack(fill="x", pady=(14, 0))
-        tk.Button(actions, text="Abrir busca", command=self.show_palette, font=("Segoe UI Semibold", 10), relief="flat", bd=0, padx=16, pady=10, fg="#ffffff", bg=ACCENT, activebackground=ACCENT_HOVER, activeforeground="#ffffff").pack(side="left")
-        tk.Button(actions, text="Configuracoes", command=self.open_settings, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
-        tk.Button(actions, text="Reindexar", command=self.refresh_index, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
-        tk.Button(actions, text="Verificar atualizacao", command=self.check_for_updates, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
-        tk.Button(actions, text="Historico de ajustes", command=self.open_updates_log, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
-        hint_card = tk.Frame(container, bg=BG_PANEL, padx=20, pady=16, highlightbackground=BORDER, highlightthickness=1)
+        create_button(actions, "Abrir busca", self.show_palette, variant="primary").pack(side="left")
+        create_button(actions, "Configuracoes", self.open_settings).pack(side="left", padx=(10, 0))
+        create_button(actions, "Reindexar", self.refresh_index, variant="tertiary").pack(side="left", padx=(10, 0))
+        create_button(actions, "Verificar atualizacao", self.check_for_updates).pack(side="left", padx=(10, 0))
+        create_button(actions, "Historico de ajustes", self.open_updates_log, variant="accent_alt").pack(side="left", padx=(10, 0))
+        hint_card = tk.Frame(container, bg=BG_PANEL, padx=24, pady=20, highlightbackground=BORDER, highlightthickness=1)
         hint_card.pack(fill="both", expand=True, pady=(14, 0))
-        tk.Label(hint_card, text="Como usar", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(hint_card, text="1. Deixe o buscador na bandeja do sistema.\n2. Use Alt+Espaco.\n3. Digite o cliente e pressione Enter.\n4. O programa abre a copia local ajustada, prepara o usuario e deixa o foco na senha.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x", pady=(8, 8))
-        tk.Label(hint_card, textvariable=self.status_var, font=("Segoe UI", 9), fg=TEXT_SOFT, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x")
+        tk.Label(hint_card, text="Fluxo operacional", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Label(hint_card, text="1. Deixe o buscador na bandeja do sistema.\n2. Use Alt+Espaco.\n3. Digite o cliente e pressione Enter.\n4. O programa abre a copia local ajustada, prepara o usuario e deixa o foco na senha.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x", pady=(10, 10))
+        status_card = tk.Frame(hint_card, bg=BG_PANEL_ALT, padx=14, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        status_card.pack(fill="x")
+        tk.Label(status_card, text="Status operacional", font=("Segoe UI Semibold", 9), fg=ACCENT_ALT, bg=BG_PANEL_ALT, anchor="w").pack(fill="x")
+        tk.Label(status_card, textvariable=self.status_var, font=("Segoe UI", 9), fg=TEXT_SOFT, bg=BG_PANEL_ALT, justify="left", anchor="w", wraplength=560).pack(fill="x", pady=(6, 0))
 
     def refresh_config_labels(self) -> None:
-        self.folder_var.set(str(self.config_store.root_path))
+        self.folder_var.set(self.config_store.root_path_text or "Nao configurada")
         self.user_var.set(self.config_store.preferred_username or "Nao definido")
         self.save_password_text.set("Login do HeadCargo: preenchimento automatico apenas do usuario.")
         self.local_password_text.set("Senha: digitacao manual no cliente. Nenhuma senha fica salva pelo buscador.")
@@ -1389,6 +1804,10 @@ class LauncherApp(tk.Tk):
 
     def set_status(self, message: str) -> None:
         self.status_var.set(message)
+
+    def notify_background_action(self, title: str, message: str, timeout_ms: int = 6000) -> None:
+        if self.tray_icon and self.tray_icon.ready.is_set():
+            self.tray_icon.show_balloon(title, message, timeout_ms)
 
     def show_panel(self) -> None:
         self.deiconify()
@@ -1590,11 +2009,24 @@ class LauncherApp(tk.Tk):
     def refresh_index(self) -> None:
         if self.is_scanning:
             return
-        self.is_scanning = True
+        root_path = self.config_store.root_path
         self.refresh_config_labels()
-        self.set_status(f"Indexando clientes em: {self.config_store.root_path}")
+        if not root_path:
+            self.entries = []
+            self.count_var.set(f"v{APP_VERSION} | Clientes indexados: 0")
+            self.set_status("Configure a pasta dos clientes em Configuracoes.")
+            self.palette.update_results()
+            return
+        if not root_path.exists() or not root_path.is_dir():
+            self.entries = []
+            self.count_var.set(f"v{APP_VERSION} | Clientes indexados: 0")
+            self.set_status(f"Pasta dos clientes invalida: {root_path}")
+            self.palette.update_results()
+            return
+        self.is_scanning = True
+        self.set_status(f"Indexando clientes em: {root_path}")
         self.count_var.set(f"v{APP_VERSION} | Clientes indexados: ...")
-        threading.Thread(target=self._scan_worker, args=(self.config_store.root_path,), daemon=True).start()
+        threading.Thread(target=self._scan_worker, args=(root_path,), daemon=True).start()
 
     def _scan_worker(self, root_path: Path) -> None:
         try:
@@ -1609,6 +2041,7 @@ class LauncherApp(tk.Tk):
         self.count_var.set(f"v{APP_VERSION} | Clientes indexados: {len(entries)}")
         self.set_status(f"Indexacao concluida. {len(entries)} cliente(s) disponivel(is).")
         self.palette.update_results()
+        self._start_desktop_prefetch(entries)
 
     def _finish_scan_error(self, error_message: str) -> None:
         self.is_scanning = False
@@ -1616,6 +2049,45 @@ class LauncherApp(tk.Tk):
         self.count_var.set(f"v{APP_VERSION} | Clientes indexados: 0")
         self.set_status(error_message)
         self.palette.update_results()
+
+    def _start_desktop_prefetch(self, entries: list[ClientEntry]) -> None:
+        if self.is_prefetching_desktops or not entries:
+            return
+        self.is_prefetching_desktops = True
+        self.prefetch_thread = threading.Thread(
+            target=self._prefetch_desktop_worker,
+            args=(entries,),
+            daemon=True,
+        )
+        self.prefetch_thread.start()
+
+    def _prefetch_desktop_worker(self, entries: list[ClientEntry]) -> None:
+        copied = 0
+        failed = 0
+        for entry in entries:
+            try:
+                if self._ensure_local_desktop_exe(entry):
+                    copied += 1
+            except OSError:
+                failed += 1
+        self.after(0, lambda: self._finish_desktop_prefetch(copied, failed))
+
+    def _finish_desktop_prefetch(self, copied: int, failed: int) -> None:
+        self.is_prefetching_desktops = False
+        if failed:
+            self.set_status(f"Cache local dos Desktop.exe concluido com {failed} falha(s).")
+        elif copied:
+            self.set_status(f"Cache local dos Desktop.exe atualizado para {copied} cliente(s).")
+
+    def _ensure_local_desktop_exe(self, entry: ClientEntry) -> bool:
+        local_folder = self._local_client_folder(entry.folder_path, entry.display_name)
+        relative_exe = entry.exe_path.relative_to(entry.folder_path)
+        local_exe = local_folder / relative_exe
+        local_exe.parent.mkdir(parents=True, exist_ok=True)
+        if self._should_copy_file(entry.exe_path, local_exe):
+            shutil.copy2(entry.exe_path, local_exe)
+            return True
+        return False
 
     def rank_entries(self, query: str) -> list[ClientEntry]:
         scored = []
@@ -1625,6 +2097,31 @@ class LauncherApp(tk.Tk):
                 scored.append((score, entry.display_name.lower(), entry))
         scored.sort(key=lambda item: (-item[0], item[1]))
         return [item[2] for item in scored]
+
+    def recent_entries(self) -> list[ClientEntry]:
+        recent_items = self.config_store.recent_clients
+        if not recent_items:
+            return []
+
+        by_folder = {str(entry.folder_path).lower(): entry for entry in self.entries}
+        recent_entries = []
+        seen = set()
+        for item in recent_items:
+            folder_key = str(item.get("folder_path", "")).strip().lower()
+            if not folder_key or folder_key in seen:
+                continue
+            entry = by_folder.get(folder_key)
+            if entry is None:
+                fallback_folder = Path(item["folder_path"])
+                if fallback_folder.exists() and fallback_folder.is_dir():
+                    fallback_exe = self.indexer._find_desktop_exe(fallback_folder)
+                    if fallback_exe:
+                        display_name = str(item.get("display_name", "")).strip() or fallback_folder.name
+                        entry = ClientEntry(display_name, normalize_text(display_name), fallback_exe, fallback_folder)
+            if entry:
+                recent_entries.append(entry)
+                seen.add(folder_key)
+        return recent_entries
 
     def _score_entry(self, query: str, entry: ClientEntry) -> int:
         name = entry.normalized_name
@@ -1662,13 +2159,13 @@ class LauncherApp(tk.Tk):
         source_folder = entry.folder_path
         local_folder = self._local_client_folder(source_folder, entry.display_name)
         self._sync_client_folder(source_folder, local_folder)
-        username = self.config_store.preferred_username.strip()
-        if username:
-            self._update_server_dcn_user_list(local_folder, username)
         relative_exe = entry.exe_path.relative_to(source_folder)
         local_exe = local_folder / relative_exe
         if not local_exe.exists():
             raise FileNotFoundError(f"Nao achei o Desktop.exe local em: {local_exe}")
+        username = self.config_store.preferred_username.strip()
+        if username:
+            self._update_server_dcn_user_lists(local_folder, local_exe, username)
         return local_folder, local_exe
 
     def _local_client_folder(self, source_folder: Path, display_name: str) -> Path:
@@ -1723,17 +2220,52 @@ class LauncherApp(tk.Tk):
         target_file.parent.mkdir(parents=True, exist_ok=True)
         target_file.write_text(sanitized, encoding=encoding)
 
-    def _update_server_dcn_user_list(self, client_folder: Path, username: str) -> None:
-        server_path = client_folder / SERVER_DCN_NAME
+    def _update_server_dcn_user_lists(self, client_folder: Path, local_exe: Path, username: str) -> None:
+        targets = self._find_server_dcn_targets(client_folder, local_exe)
+        if not targets:
+            targets = [local_exe.parent / SERVER_DCN_NAME]
+
+        updated = 0
+        for server_path in targets:
+            if self._update_single_server_dcn_user_list(server_path, username):
+                updated += 1
+
+        if updated:
+            self.set_status(f"Usuario '{username}' preparado em {updated} arquivo(s) {SERVER_DCN_NAME} da copia local.")
+
+    def _find_server_dcn_targets(self, client_folder: Path, local_exe: Path) -> list[Path]:
+        seen = set()
+        targets = []
+
+        for candidate in (local_exe.parent / SERVER_DCN_NAME, client_folder / SERVER_DCN_NAME):
+            normalized = str(candidate).lower()
+            if candidate.exists() and normalized not in seen:
+                seen.add(normalized)
+                targets.append(candidate)
+
+        for current_root, _, filenames in os.walk(client_folder):
+            for filename in filenames:
+                if filename.lower() != SERVER_DCN_NAME.lower():
+                    continue
+                candidate = Path(current_root) / filename
+                normalized = str(candidate).lower()
+                if normalized not in seen:
+                    seen.add(normalized)
+                    targets.append(candidate)
+
+        return targets
+
+    def _update_single_server_dcn_user_list(self, server_path: Path, username: str) -> bool:
         if not server_path.exists():
-            return
+            lines = []
+            encoding = "utf-8"
+        else:
+            try:
+                content, encoding = read_text_with_fallback(server_path)
+            except OSError:
+                return False
+            lines = content.splitlines(keepends=True)
 
-        try:
-            content, encoding = read_text_with_fallback(server_path)
-        except OSError:
-            return
-
-        lines = content.splitlines(keepends=True)
         users_section_index = None
         list_line_index = None
 
@@ -1770,30 +2302,72 @@ class LauncherApp(tk.Tk):
             lines.extend(["[Users]\r\n", f"List={serialize_user_list([username])}\r\n"])
 
         try:
+            server_path.parent.mkdir(parents=True, exist_ok=True)
             server_path.write_text("".join(lines), encoding=encoding)
-            self.set_status(f"Usuario '{username}' preparado na copia local de {SERVER_DCN_NAME}.")
+            return True
         except OSError:
-            pass
+            return False
 
     def launch_entry(self, entry: ClientEntry) -> None:
         if not entry.exe_path.exists():
             messagebox.showerror("Arquivo nao encontrado", f"Nao achei o arquivo:\n{entry.exe_path}")
             return
+        if self.is_launching_client:
+            self.set_status("Ja existe um cliente sendo preparado em segundo plano.")
+            self.notify_background_action(
+                "Buscador ocupado",
+                "Ja existe um cliente sendo preparado. Aguarde a abertura automatica.",
+                5000,
+            )
+            return
+
+        self.palette.hide_palette()
+        self.is_launching_client = True
+        self.set_status(
+            f"Preparando o cliente {entry.display_name} em segundo plano. "
+            "Quando o download do OneDrive terminar, ele sera aberto automaticamente."
+        )
+        self.notify_background_action(
+            "Preparando cliente",
+            f"Baixando e preparando {entry.display_name}. O sistema sera aberto automaticamente ao terminar.",
+            7000,
+        )
+        threading.Thread(target=self._launch_entry_worker, args=(entry,), daemon=True).start()
+
+    def _launch_entry_worker(self, entry: ClientEntry) -> None:
         try:
             local_folder, local_exe = self.prepare_client_workspace(entry)
             process = subprocess.Popen([str(local_exe)], cwd=str(local_folder))
         except (OSError, FileNotFoundError) as exc:
-            messagebox.showerror("Erro ao executar", str(exc))
+            self.after(0, lambda: self._finish_launch_entry_error(entry.display_name, str(exc)))
             return
-        self.set_status(f"Abrindo cliente em copia local ajustada: {entry.display_name}")
-        self.palette.hide_palette()
-        self.login_automator.apply_async(process.pid, self.config_store.login_preferences())
+        self.after(0, lambda: self._finish_launch_entry_success(entry, process.pid))
+
+    def _finish_launch_entry_success(self, entry: ClientEntry, process_id: int) -> None:
+        self.is_launching_client = False
+        self.config_store.remember_recent_client(entry)
+        self.set_status(f"Cliente {entry.display_name} aberto com sucesso.")
+        self.notify_background_action(
+            "Cliente aberto",
+            f"{entry.display_name} foi preparado e aberto automaticamente.",
+            5000,
+        )
+        self.login_automator.apply_async(process_id, self.config_store.login_preferences())
+
+    def _finish_launch_entry_error(self, display_name: str, error_message: str) -> None:
+        self.is_launching_client = False
+        self.set_status(f"Falha ao preparar o cliente {display_name}.")
+        messagebox.showerror("Erro ao executar", error_message)
 
     def open_root_folder(self) -> None:
-        if not self.config_store.root_path.exists():
-            messagebox.showerror("Pasta nao encontrada", f"Nao achei a pasta:\n{self.config_store.root_path}")
+        root_path = self.config_store.root_path
+        if not root_path:
+            messagebox.showerror("Pasta nao configurada", "Defina a pasta dos clientes nas configuracoes.")
             return
-        subprocess.Popen(["explorer", str(self.config_store.root_path)])
+        if not root_path.exists() or not root_path.is_dir():
+            messagebox.showerror("Pasta nao encontrada", f"Nao achei a pasta:\n{root_path}")
+            return
+        subprocess.Popen(["explorer", str(root_path)])
 
     def shutdown(self) -> None:
         if self.hotkey_listener:
