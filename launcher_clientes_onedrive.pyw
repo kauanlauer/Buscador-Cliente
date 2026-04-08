@@ -102,6 +102,21 @@ ACCENT_HOVER = "#1d4ed8"
 BORDER = "#dbe4f0"
 SUCCESS = "#0f766e"
 
+CHANGELOG_ENTRIES = [
+    {
+        "date": "2026-04-07",
+        "title": "Ajustes locais em validacao",
+        "status": "Nao publicado",
+        "items": [
+            "Correcao do fluxo de abertura para executar a copia local do cliente em vez do Desktop.exe original do OneDrive.",
+            "Garantia de que o usuario padrao configurado fique em primeiro lugar no [Users] / List= do server.dcn local do usuario.",
+            "Correcao da busca por Alt+Espaco para funcionar com o app apenas em segundo plano, sem precisar abrir o painel primeiro.",
+            "Remocao dos waits bloqueantes na inicializacao do hotkey e do tray, reduzindo travamentos na subida junto com o Windows.",
+            "Inclusao de um modal interno de historico para registrar os ajustes feitos no buscador sem depender de publicacao no GitHub.",
+        ],
+    },
+]
+
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 shell32 = ctypes.windll.shell32
@@ -111,6 +126,13 @@ user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM,
 user32.DefWindowProcW.restype = ctypes.c_ssize_t
 kernel32.LocalFree.argtypes = [ctypes.c_void_p]
 kernel32.LocalFree.restype = ctypes.c_void_p
+
+for _wintype_name, _fallback in {
+    "HCURSOR": wintypes.HANDLE,
+    "HBRUSH": wintypes.HANDLE,
+}.items():
+    if not hasattr(wintypes, _wintype_name):
+        setattr(wintypes, _wintype_name, _fallback)
 
 
 class WNDCLASSW(ctypes.Structure):
@@ -274,6 +296,17 @@ def serialize_user_list(values: list[str]) -> str:
 def slugify_filename(value: str) -> str:
     normalized = normalize_text(value).replace(" ", "_").strip("_")
     return normalized or "cliente"
+
+
+def format_changelog_entry(entry: dict[str, object]) -> str:
+    lines = [
+        f"{entry.get('date', '')} | {entry.get('title', '')}",
+        f"Status: {entry.get('status', '')}",
+        "",
+    ]
+    for item in entry.get("items", []):
+        lines.append(f"- {item}")
+    return "\n".join(lines).strip()
 
 
 def strip_ini_section(content: str, section_name: str) -> str:
@@ -997,6 +1030,81 @@ class SettingsWindow(tk.Toplevel):
         self.destroy()
 
 
+class UpdatesLogWindow(tk.Toplevel):
+    def __init__(self, app) -> None:
+        super().__init__(app)
+        self.app = app
+        self.title(f"{APP_NAME} - Historico de ajustes")
+        self.geometry("760x540")
+        self.minsize(700, 460)
+        self.configure(bg=BG_APP)
+        self.transient(app)
+        self.grab_set()
+        if getattr(app, "app_icon", None):
+            self.iconphoto(True, app.app_icon)
+        self._build_ui()
+        self._center()
+
+    def _build_ui(self) -> None:
+        shell = tk.Frame(self, bg=BG_APP, padx=18, pady=18)
+        shell.pack(fill="both", expand=True)
+
+        card = tk.Frame(shell, bg=BG_PANEL, padx=18, pady=18, highlightbackground=BORDER, highlightthickness=1)
+        card.pack(fill="both", expand=True)
+
+        title_row = tk.Frame(card, bg=BG_PANEL)
+        title_row.pack(fill="x")
+        if getattr(self.app, "header_logo_small", None):
+            tk.Label(title_row, image=self.app.header_logo_small, bg=BG_PANEL).pack(side="left", padx=(0, 12))
+        text_col = tk.Frame(title_row, bg=BG_PANEL)
+        text_col.pack(side="left", fill="x", expand=True)
+        tk.Label(text_col, text="Historico de ajustes do buscador", font=("Segoe UI Semibold", 15), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
+        tk.Label(text_col, text="Registro interno das correcoes e melhorias aplicadas neste programa, inclusive ajustes ainda nao publicados.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", wraplength=620).pack(anchor="w", pady=(6, 0))
+
+        status_card = tk.Frame(card, bg=BG_RESULTS, padx=12, pady=12, highlightbackground=BORDER, highlightthickness=1)
+        status_card.pack(fill="x", pady=(16, 0))
+        tk.Label(status_card, text=f"Versao instalada: {APP_VERSION}", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_RESULTS, anchor="w").pack(fill="x")
+        tk.Label(status_card, text="Publicacao no GitHub permanece pausada ate os bugs serem validados e fechados.", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_RESULTS, justify="left", wraplength=640).pack(fill="x", pady=(6, 0))
+
+        text_frame = tk.Frame(card, bg=BG_PANEL)
+        text_frame.pack(fill="both", expand=True, pady=(16, 0))
+        history_text = tk.Text(
+            text_frame,
+            font=("Segoe UI", 10),
+            bg=BG_RESULTS,
+            fg=TEXT_MAIN,
+            relief="flat",
+            bd=0,
+            wrap="word",
+            padx=14,
+            pady=14,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+        )
+        scrollbar = tk.Scrollbar(text_frame, orient="vertical", command=history_text.yview)
+        history_text.configure(yscrollcommand=scrollbar.set)
+        history_text.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        formatted_entries = []
+        for entry in CHANGELOG_ENTRIES:
+            formatted_entries.append(format_changelog_entry(entry))
+        history_text.insert("1.0", "\n\n".join(formatted_entries))
+        history_text.configure(state="disabled")
+
+        footer = tk.Frame(card, bg=BG_PANEL)
+        footer.pack(fill="x", pady=(16, 0))
+        tk.Button(footer, text="Fechar", command=self.destroy, font=("Segoe UI", 10), relief="flat", bd=0, padx=18, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(anchor="e")
+
+    def _center(self) -> None:
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = max((self.winfo_screenwidth() - width) // 2, 0)
+        y = max((self.winfo_screenheight() - height) // 6, 20)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
+
 class SearchPalette(tk.Toplevel):
     def __init__(self, master) -> None:
         super().__init__(master)
@@ -1007,7 +1115,6 @@ class SearchPalette(tk.Toplevel):
         self.result_count_var = tk.StringVar(value="")
         self.withdraw()
         self.overrideredirect(True)
-        self.transient(master)
         self.configure(bg="#d6deea")
         self._build_ui()
         self._bind_events()
@@ -1069,8 +1176,8 @@ class SearchPalette(tk.Toplevel):
         self.lift()
         self.attributes("-topmost", True)
         self.query_var.set("")
-        self.search_entry.focus_force()
         self.update_results()
+        self.after(10, self.search_entry.focus_force)
 
     def hide_palette(self) -> None:
         self.withdraw()
@@ -1161,6 +1268,7 @@ class LauncherApp(tk.Tk):
         self.is_scanning = False
         self.is_checking_updates = False
         self.settings_window = None
+        self.updates_log_window = None
         self.status_var = tk.StringVar(value="Preparando buscador...")
         self.folder_var = tk.StringVar()
         self.user_var = tk.StringVar()
@@ -1193,6 +1301,7 @@ class LauncherApp(tk.Tk):
         menu_busca.add_command(label="Abrir painel", command=self.show_panel)
         menu_busca.add_command(label="Reindexar", command=self.refresh_index)
         menu_busca.add_command(label="Verificar atualizacao", command=self.check_for_updates)
+        menu_busca.add_command(label="Historico de ajustes", command=self.open_updates_log)
         menu_busca.add_separator()
         menu_busca.add_command(label="Sair", command=self.shutdown)
         menu_bar.add_cascade(label="Buscador", menu=menu_busca)
@@ -1261,10 +1370,11 @@ class LauncherApp(tk.Tk):
         tk.Button(actions, text="Configuracoes", command=self.open_settings, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
         tk.Button(actions, text="Reindexar", command=self.refresh_index, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
         tk.Button(actions, text="Verificar atualizacao", command=self.check_for_updates, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
+        tk.Button(actions, text="Historico de ajustes", command=self.open_updates_log, font=("Segoe UI", 10), relief="flat", bd=0, padx=16, pady=10, fg=TEXT_MAIN, bg="#e2e8f0", activebackground="#cbd5e1", activeforeground=TEXT_MAIN).pack(side="left", padx=(10, 0))
         hint_card = tk.Frame(container, bg=BG_PANEL, padx=20, pady=16, highlightbackground=BORDER, highlightthickness=1)
         hint_card.pack(fill="both", expand=True, pady=(14, 0))
         tk.Label(hint_card, text="Como usar", font=("Segoe UI Semibold", 10), fg=TEXT_MAIN, bg=BG_PANEL).pack(anchor="w")
-        tk.Label(hint_card, text="1. Deixe o buscador na bandeja do sistema.\n2. Use Alt+Espaco.\n3. Digite o cliente e pressione Enter.\n4. O programa abre o cliente original, preenche o usuario e deixa o foco na senha.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x", pady=(8, 8))
+        tk.Label(hint_card, text="1. Deixe o buscador na bandeja do sistema.\n2. Use Alt+Espaco.\n3. Digite o cliente e pressione Enter.\n4. O programa abre a copia local ajustada, prepara o usuario e deixa o foco na senha.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x", pady=(8, 8))
         tk.Label(hint_card, textvariable=self.status_var, font=("Segoe UI", 9), fg=TEXT_SOFT, bg=BG_PANEL, justify="left", anchor="w").pack(fill="x")
 
     def refresh_config_labels(self) -> None:
@@ -1299,6 +1409,14 @@ class LauncherApp(tk.Tk):
             self.settings_window.focus_force()
             return
         self.settings_window = SettingsWindow(self)
+
+    def open_updates_log(self) -> None:
+        self.show_panel()
+        if self.updates_log_window and self.updates_log_window.winfo_exists():
+            self.updates_log_window.lift()
+            self.updates_log_window.focus_force()
+            return
+        self.updates_log_window = UpdatesLogWindow(self)
 
     def check_for_daily_updates(self) -> None:
         if not getattr(sys, "frozen", False):
@@ -1437,15 +1555,37 @@ class LauncherApp(tk.Tk):
     def _start_hotkey_listener(self) -> None:
         self.hotkey_listener = HotkeyListener(lambda: self.after(0, self.palette.toggle_palette))
         self.hotkey_listener.start()
-        self.hotkey_listener.ready.wait(1.0)
-        if self.hotkey_listener.error_message:
-            self.hotkey_var.set("Hotkey indisponivel")
-            self.set_status(self.hotkey_listener.error_message)
+        self.after(50, lambda: self._finish_hotkey_listener_startup(20))
+
+    def _finish_hotkey_listener_startup(self, attempts_left: int) -> None:
+        if not self.hotkey_listener:
+            return
+        if self.hotkey_listener.ready.is_set():
+            if self.hotkey_listener.error_message:
+                self.hotkey_var.set("Hotkey indisponivel")
+                self.set_status(self.hotkey_listener.error_message)
+            else:
+                self.hotkey_var.set("Hotkey: Alt+Espaco ativo")
+            return
+        if attempts_left > 0:
+            self.after(50, lambda: self._finish_hotkey_listener_startup(attempts_left - 1))
+        else:
+            self.hotkey_var.set("Hotkey aguardando inicializacao")
 
     def _start_tray_icon(self) -> None:
         self.tray_icon = TrayIcon(self)
         self.tray_icon.start()
-        self.tray_icon.ready.wait(2.0)
+        self.after(50, lambda: self._finish_tray_icon_startup(40))
+
+    def _finish_tray_icon_startup(self, attempts_left: int) -> None:
+        if not self.tray_icon:
+            return
+        if self.tray_icon.ready.is_set():
+            return
+        if attempts_left > 0:
+            self.after(50, lambda: self._finish_tray_icon_startup(attempts_left - 1))
+        else:
+            self.set_status("Icone da bandeja ainda nao respondeu. O processo segue em execucao.")
 
     def refresh_index(self) -> None:
         if self.is_scanning:
@@ -1604,7 +1744,7 @@ class LauncherApp(tk.Tk):
                 continue
             if users_section_index is not None and stripped.startswith("[") and stripped.endswith("]") and index > users_section_index:
                 break
-            if users_section_index is not None and stripped.lower().startswith("list="):
+            if users_section_index is not None and "=" in stripped and stripped.split("=", 1)[0].strip().lower() == "list":
                 list_line_index = index
                 break
 
@@ -1640,11 +1780,12 @@ class LauncherApp(tk.Tk):
             messagebox.showerror("Arquivo nao encontrado", f"Nao achei o arquivo:\n{entry.exe_path}")
             return
         try:
-            process = subprocess.Popen([str(entry.exe_path)], cwd=str(entry.folder_path))
+            local_folder, local_exe = self.prepare_client_workspace(entry)
+            process = subprocess.Popen([str(local_exe)], cwd=str(local_folder))
         except (OSError, FileNotFoundError) as exc:
             messagebox.showerror("Erro ao executar", str(exc))
             return
-        self.set_status(f"Abrindo cliente: {entry.display_name}")
+        self.set_status(f"Abrindo cliente em copia local ajustada: {entry.display_name}")
         self.palette.hide_palette()
         self.login_automator.apply_async(process.pid, self.config_store.login_preferences())
 
