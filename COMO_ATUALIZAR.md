@@ -7,7 +7,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build_instalador_buscador.
 
 2. Atualize o manifesto do repositorio:
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.2 -Notes "Descricao curta da versao."
+powershell -NoProfile -ExecutionPolicy Bypass -File .\publicar_atualizacao_buscador.ps1 -Version 1.2.4 -Notes "Descricao curta da versao."
 ```
 
 3. Monte a pasta `Github` com os arquivos do repositorio:
@@ -18,10 +18,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\preparar_pasta_github.ps1
 4. Envie para o GitHub somente o que estiver dentro da pasta `Github`.
 
 5. Crie ou atualize o GitHub Release e anexe exatamente este arquivo:
-- `dist\Setup Buscador Cliente HeadCargo.exe`
+- `dist\Setup.Buscador.Cliente.HeadCargo.exe`
 
 O nome do anexo no Release deve ser:
-- `Setup Buscador Cliente HeadCargo.exe`
+- `Setup.Buscador.Cliente.HeadCargo.exe`
 
 **Como o app atualiza**
 
@@ -41,5 +41,5 @@ O nome do anexo no Release deve ser:
 - O app busca o manifesto em:
   `https://raw.githubusercontent.com/kauanlauer/Buscador-Cliente/main/github_update_manifest.json`
 - O instalador e baixado de:
-  `https://github.com/kauanlauer/Buscador-Cliente/releases/latest/download/Setup%20Buscador%20Cliente%20HeadCargo.exe`
+  `https://github.com/kauanlauer/Buscador-Cliente/releases/latest/download/Setup.Buscador.Cliente.HeadCargo.exe`
 - Se o Release estiver sem esse arquivo, o update nao vai conseguir baixar.
